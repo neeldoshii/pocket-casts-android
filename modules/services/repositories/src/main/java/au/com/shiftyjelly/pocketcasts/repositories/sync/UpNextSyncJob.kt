@@ -1,3 +1,4 @@
+@file:Suppress("UNREACHABLE_CODE", "UNUSED_PARAMETER")
 package au.com.shiftyjelly.pocketcasts.repositories.sync
 
 import android.annotation.SuppressLint
@@ -62,6 +63,8 @@ class UpNextSyncJob : JobService() {
     companion object {
         @JvmStatic
         fun run(syncManager: SyncManager, context: Context) {
+            // Patch: do not sync up next
+            return
             // Don't run the job if Up Next syncing is turned off
             if (!syncManager.isLoggedIn()) {
                 return
