@@ -16,13 +16,16 @@ import au.com.shiftyjelly.pocketcasts.podcasts.databinding.AdapterEpisodeBinding
 import au.com.shiftyjelly.pocketcasts.podcasts.databinding.AdapterUserEpisodeBinding
 import au.com.shiftyjelly.pocketcasts.podcasts.view.components.PlayButton
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.repositories.bookmark.BookmarkManager
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
 import au.com.shiftyjelly.pocketcasts.repositories.images.PodcastImageLoader
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
 import au.com.shiftyjelly.pocketcasts.repositories.playback.UpNextQueue
 import au.com.shiftyjelly.pocketcasts.ui.extensions.getThemeColor
-import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectHelper
+import au.com.shiftyjelly.pocketcasts.views.helper.SwipeButtonLayoutFactory
+import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectEpisodesHelper
 import io.reactivex.disposables.CompositeDisposable
+import kotlinx.coroutines.rx2.asObservable
 import au.com.shiftyjelly.pocketcasts.ui.R as UR
 
 val PLAYBACK_DIFF: DiffUtil.ItemCallback<BaseEpisode> = object : DiffUtil.ItemCallback<BaseEpisode>() {
@@ -37,6 +40,7 @@ val PLAYBACK_DIFF: DiffUtil.ItemCallback<BaseEpisode> = object : DiffUtil.ItemCa
 }
 
 class EpisodeListAdapter(
+    val bookmarkManager: BookmarkManager,
     val downloadManager: DownloadManager,
     val playbackManager: PlaybackManager,
     val upNextQueue: UpNextQueue,
@@ -44,12 +48,15 @@ class EpisodeListAdapter(
     val onRowClick: (BaseEpisode) -> Unit,
     val playButtonListener: PlayButton.OnClickListener,
     val imageLoader: PodcastImageLoader,
-    val multiSelectHelper: MultiSelectHelper,
+    val multiSelectHelper: MultiSelectEpisodesHelper,
     val fragmentManager: FragmentManager,
     val fromListUuid: String? = null,
+    val swipeButtonLayoutFactory: SwipeButtonLayoutFactory,
 ) : ListAdapter<BaseEpisode, RecyclerView.ViewHolder>(PLAYBACK_DIFF) {
 
     val disposables = CompositeDisposable()
+
+    private var bookmarksAvailable: Boolean = false
 
     init {
         setHasStableIds(true)
@@ -64,8 +71,25 @@ class EpisodeListAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
-            R.layout.adapter_episode -> EpisodeViewHolder(AdapterEpisodeBinding.inflate(inflater, parent, false), EpisodeViewHolder.ViewMode.Artwork, downloadManager.progressUpdateRelay, playbackManager.playbackStateRelay, upNextQueue.changesObservable, imageLoader)
-            R.layout.adapter_user_episode -> UserEpisodeViewHolder(AdapterUserEpisodeBinding.inflate(inflater, parent, false), UserEpisodeViewHolder.ViewMode.Artwork, downloadManager.progressUpdateRelay, playbackManager.playbackStateRelay, upNextQueue.changesObservable, imageLoader)
+            R.layout.adapter_episode -> EpisodeViewHolder(
+                binding = AdapterEpisodeBinding.inflate(inflater, parent, false),
+                viewMode = EpisodeViewHolder.ViewMode.Artwork,
+                downloadProgressUpdates = downloadManager.progressUpdateRelay,
+                playbackStateUpdates = playbackManager.playbackStateRelay,
+                upNextChangesObservable = upNextQueue.changesObservable,
+                imageLoader = imageLoader,
+                swipeButtonLayoutFactory = swipeButtonLayoutFactory
+            )
+            R.layout.adapter_user_episode -> UserEpisodeViewHolder(
+                binding = AdapterUserEpisodeBinding.inflate(inflater, parent, false),
+                viewMode = UserEpisodeViewHolder.ViewMode.Artwork,
+                downloadProgressUpdates = downloadManager.progressUpdateRelay,
+                playbackStateUpdates = playbackManager.playbackStateRelay,
+                upNextChangesObservable = upNextQueue.changesObservable,
+                imageLoader = imageLoader,
+                swipeButtonLayoutFactory = swipeButtonLayoutFactory,
+                userBookmarksObservable = bookmarkManager.findUserEpisodesBookmarksFlow().asObservable(),
+            )
             else -> throw IllegalStateException("Unknown playable type")
         }
     }
@@ -81,7 +105,19 @@ class EpisodeListAdapter(
         val episode = getItem(position) as PodcastEpisode
 
         val tintColor = this.tintColor ?: holder.itemView.context.getThemeColor(UR.attr.primary_icon_01)
-        holder.setup(episode, fromListUuid, tintColor, playButtonListener, settings.streamingMode(), settings.getUpNextSwipeAction(), multiSelectHelper.isMultiSelecting, multiSelectHelper.isSelected(episode), disposables)
+        holder.setup(
+            episode = episode,
+            fromListUuid = fromListUuid,
+            tintColor = tintColor,
+            playButtonListener = playButtonListener,
+            streamByDefault = settings.streamingMode.value,
+            upNextAction = settings.upNextSwipe.value,
+            multiSelectEnabled = multiSelectHelper.isMultiSelecting,
+            isSelected = multiSelectHelper.isSelected(episode),
+            disposables = disposables,
+            bookmarksObservable = bookmarkManager.findBookmarksFlow().asObservable(),
+            bookmarksAvailable = bookmarksAvailable,
+        )
         holder.episodeRow.setOnClickListener {
             if (multiSelectHelper.isMultiSelecting) {
                 holder.binding.checkbox.isChecked = multiSelectHelper.toggle(episode)
@@ -90,7 +126,7 @@ class EpisodeListAdapter(
             }
         }
         holder.episodeRow.setOnLongClickListener {
-            multiSelectHelper.defaultLongPress(episode = episode, fragmentManager = fragmentManager)
+            multiSelectHelper.defaultLongPress(multiSelectable = episode, fragmentManager = fragmentManager)
             notifyDataSetChanged()
             true
         }
@@ -99,7 +135,16 @@ class EpisodeListAdapter(
     private fun bindUserEpisodeViewHolder(position: Int, holder: UserEpisodeViewHolder) {
         val userEpisode = getItem(position) as UserEpisode
         val tintColor = this.tintColor ?: holder.itemView.context.getThemeColor(UR.attr.primary_icon_01)
-        holder.setup(userEpisode, tintColor, playButtonListener, settings.streamingMode(), settings.getUpNextSwipeAction(), multiSelectHelper.isMultiSelecting, multiSelectHelper.isSelected(userEpisode))
+        holder.setup(
+            episode = userEpisode,
+            tintColor = tintColor,
+            playButtonListener = playButtonListener,
+            streamByDefault = settings.streamingMode.value,
+            upNextAction = settings.upNextSwipe.value,
+            multiSelectEnabled = multiSelectHelper.isMultiSelecting,
+            isSelected = multiSelectHelper.isSelected(userEpisode),
+            bookmarksAvailable = bookmarksAvailable,
+        )
         holder.episodeRow.setOnClickListener {
             if (multiSelectHelper.isMultiSelecting) {
                 holder.binding.checkbox.isChecked = multiSelectHelper.toggle(userEpisode)
@@ -108,7 +153,7 @@ class EpisodeListAdapter(
             }
         }
         holder.episodeRow.setOnLongClickListener {
-            multiSelectHelper.defaultLongPress(episode = userEpisode, fragmentManager = fragmentManager)
+            multiSelectHelper.defaultLongPress(multiSelectable = userEpisode, fragmentManager = fragmentManager)
             notifyDataSetChanged()
             true
         }
@@ -141,5 +186,9 @@ class EpisodeListAdapter(
             is UserEpisode -> R.layout.adapter_user_episode
             else -> throw IllegalStateException("Unknown playable type")
         }
+    }
+
+    fun setBookmarksAvailable(bookmarksAvailable: Boolean) {
+        this.bookmarksAvailable = bookmarksAvailable
     }
 }

@@ -5,12 +5,18 @@ import android.content.SharedPreferences
 import au.com.shiftyjelly.pocketcasts.models.to.SubscriptionStatus
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.preferences.di.PublicSharedPreferences
+import au.com.shiftyjelly.pocketcasts.utils.AppPlatform
 import au.com.shiftyjelly.pocketcasts.utils.DisplayUtil
+import au.com.shiftyjelly.pocketcasts.utils.Util
 import com.automattic.android.tracks.TracksClient
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import timber.log.Timber
 import javax.inject.Inject
+import kotlin.coroutines.CoroutineContext
 
 class TracksAnalyticsTracker @Inject constructor(
     @ApplicationContext private val appContext: Context,
@@ -18,63 +24,74 @@ class TracksAnalyticsTracker @Inject constructor(
     private val displayUtil: DisplayUtil,
     private val settings: Settings,
     private val accountStatusInfo: AccountStatusInfo,
-) : IdentifyingTracker(preferences) {
+) : IdentifyingTracker(preferences), CoroutineScope {
     private val tracksClient: TracksClient? = TracksClient.getClient(appContext)
     override val anonIdPrefKey: String = TRACKS_ANON_ID
-    private val plusSubscription: SubscriptionStatus.Plus?
-        get() = settings.getCachedSubscription() as? SubscriptionStatus.Plus
+    override val coroutineContext: CoroutineContext = Dispatchers.IO
 
-    private val predefinedEventProperties: Map<String, Any>
-        get() {
-            val isLoggedIn = accountStatusInfo.isLoggedIn()
-            val hasSubscription = plusSubscription != null
-            val hasLifetime = plusSubscription?.isLifetimePlus
-                ?: false
-            val subscriptionType = plusSubscription?.type?.toString()
-                ?: INVALID_OR_NULL_VALUE
-            val subscriptionPlatform = plusSubscription?.platform?.toString()
-                ?: INVALID_OR_NULL_VALUE
-            val subscriptionFrequency = plusSubscription?.frequency?.toString()
-                ?: INVALID_OR_NULL_VALUE
-
-            return mapOf(
-                PredefinedEventProperty.HAS_DYNAMIC_FONT_SIZE to displayUtil.hasDynamicFontSize(),
-                PredefinedEventProperty.USER_IS_LOGGED_IN to isLoggedIn,
-                PredefinedEventProperty.PLUS_HAS_SUBSCRIPTION to hasSubscription,
-                PredefinedEventProperty.PLUS_HAS_LIFETIME to hasLifetime,
-                PredefinedEventProperty.PLUS_SUBSCRIPTION_TYPE to subscriptionType,
-                PredefinedEventProperty.PLUS_SUBSCRIPTION_PLATFORM to subscriptionPlatform,
-                PredefinedEventProperty.PLUS_SUBSCRIPTION_FREQUENCY to subscriptionFrequency,
-            ).mapKeys { it.key.analyticsKey }
-        }
+    private var predefinedEventProperties = emptyMap<String, Any>()
 
     override fun track(event: AnalyticsEvent, properties: Map<String, Any>) {
         if (tracksClient == null) return
 
-        val eventKey = event.key
-        val user = userId ?: anonID ?: generateNewAnonID()
-        val userType = userId?.let {
-            TracksClient.NosaraUserType.POCKETCASTS
-        } ?: TracksClient.NosaraUserType.ANON
+        launch {
+            val eventKey = event.key
+            val user = userId ?: anonID ?: generateNewAnonID()
+            val userType = userId?.let {
+                TracksClient.NosaraUserType.POCKETCASTS
+            } ?: TracksClient.NosaraUserType.ANON
 
-        /* Create the merged JSON Object of properties.
-        Properties defined by the user have precedence over the default ones pre-defined at "event level" */
-        val propertiesToJSON = JSONObject(properties)
-        predefinedEventProperties.keys.forEach { key ->
-            if (propertiesToJSON.has(key)) {
-                Timber.w("The user has defined a property named: '$key' that will override the same property pre-defined at event level. This may generate unexpected behavior!!")
-                Timber.w("User value: " + propertiesToJSON.get(key).toString() + " - pre-defined value: " + predefinedEventProperties[key].toString())
+            /* Create the merged JSON Object of properties.
+            Properties defined by the user have precedence over the default ones pre-defined at "event level" */
+            val propertiesToJSON = JSONObject(properties)
+            predefinedEventProperties.forEach { (key, value) ->
+                if (propertiesToJSON.has(key)) {
+                    Timber.w("The user has defined a property named: '$key' that will override the same property pre-defined at event level. This may generate unexpected behavior!!")
+                    Timber.w("User value: ${propertiesToJSON.get(key)} - pre-defined value: $value")
+                } else {
+                    propertiesToJSON.put(key, value)
+                }
+            }
+
+            tracksClient.track(EVENTS_PREFIX + eventKey, propertiesToJSON, user, userType)
+            if (propertiesToJSON.length() > 0) {
+                Timber.i("\uD83D\uDD35 Tracked: $eventKey, Properties: $propertiesToJSON")
             } else {
-                propertiesToJSON.put(key, predefinedEventProperties[key])
+                Timber.i("\uD83D\uDD35 Tracked: $eventKey")
             }
         }
+    }
 
-        tracksClient.track(EVENTS_PREFIX + eventKey, propertiesToJSON, user, userType)
-        if (propertiesToJSON.length() > 0) {
-            Timber.i("\uD83D\uDD35 Tracked: $eventKey, Properties: $propertiesToJSON")
-        } else {
-            Timber.i("\uD83D\uDD35 Tracked: $eventKey")
-        }
+    private fun updatePredefinedEventProperties() {
+        val paidSubscription = settings.cachedSubscriptionStatus.value as? SubscriptionStatus.Paid
+        val isLoggedIn = accountStatusInfo.isLoggedIn()
+        val hasSubscription = paidSubscription != null
+        val hasLifetime = paidSubscription?.isLifetimePlus
+            ?: false
+        val subscriptionType = paidSubscription?.type?.toString()
+            ?: INVALID_OR_NULL_VALUE
+        val subscriptionTier = paidSubscription?.tier?.toString()
+            ?: INVALID_OR_NULL_VALUE
+        val subscriptionPlatform = paidSubscription?.platform?.toString()
+            ?: INVALID_OR_NULL_VALUE
+        val subscriptionFrequency = paidSubscription?.frequency?.toString()
+            ?: INVALID_OR_NULL_VALUE
+
+        predefinedEventProperties = mapOf(
+            PredefinedEventProperty.HAS_DYNAMIC_FONT_SIZE to displayUtil.hasDynamicFontSize(),
+            PredefinedEventProperty.USER_IS_LOGGED_IN to isLoggedIn,
+            PredefinedEventProperty.PLUS_HAS_SUBSCRIPTION to hasSubscription,
+            PredefinedEventProperty.PLUS_HAS_LIFETIME to hasLifetime,
+            PredefinedEventProperty.PLUS_SUBSCRIPTION_TYPE to subscriptionType,
+            PredefinedEventProperty.PLUS_SUBSCRIPTION_TIER to subscriptionTier,
+            PredefinedEventProperty.PLUS_SUBSCRIPTION_PLATFORM to subscriptionPlatform,
+            PredefinedEventProperty.PLUS_SUBSCRIPTION_FREQUENCY to subscriptionFrequency,
+            PredefinedEventProperty.PLATFORM to when (Util.getAppPlatform(appContext)) {
+                AppPlatform.Automotive -> "automotive"
+                AppPlatform.Phone -> "phone"
+                AppPlatform.WearOs -> "watch"
+            },
+        ).mapKeys { it.key.analyticsKey }
     }
 
     override fun refreshMetadata() {
@@ -92,6 +109,8 @@ class TracksAnalyticsTracker @Inject constructor(
                 generateNewAnonID()
             }
         }
+
+        updatePredefinedEventProperties()
     }
 
     override fun flush() {
@@ -110,8 +129,10 @@ class TracksAnalyticsTracker @Inject constructor(
         PLUS_HAS_SUBSCRIPTION("plus_has_subscription"),
         PLUS_HAS_LIFETIME("plus_has_lifetime"),
         PLUS_SUBSCRIPTION_TYPE("plus_subscription_type"),
+        PLUS_SUBSCRIPTION_TIER("plus_subscription_tier"),
         PLUS_SUBSCRIPTION_PLATFORM("plus_subscription_platform"),
         PLUS_SUBSCRIPTION_FREQUENCY("plus_subscription_frequency"),
+        PLATFORM("platform"),
     }
 
     companion object {

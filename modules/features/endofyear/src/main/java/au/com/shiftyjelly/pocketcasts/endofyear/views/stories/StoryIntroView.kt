@@ -1,81 +1,160 @@
 package au.com.shiftyjelly.pocketcasts.endofyear.views.stories
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
+import androidx.constraintlayout.compose.ConstraintLayout
 import au.com.shiftyjelly.pocketcasts.compose.AppTheme
+import au.com.shiftyjelly.pocketcasts.compose.parallaxview.ParallaxView
 import au.com.shiftyjelly.pocketcasts.compose.preview.ThemePreviewParameterProvider
 import au.com.shiftyjelly.pocketcasts.endofyear.R
-import au.com.shiftyjelly.pocketcasts.endofyear.components.PodcastLogoWhite
-import au.com.shiftyjelly.pocketcasts.endofyear.components.StoryPrimaryText
-import au.com.shiftyjelly.pocketcasts.repositories.endofyear.stories.StoryIntro
+import au.com.shiftyjelly.pocketcasts.endofyear.components.StoryAppLogo
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
-import au.com.shiftyjelly.pocketcasts.localization.R as LR
 
 @Composable
 fun StoryIntroView(
-    story: StoryIntro,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-    ) {
-        Spacer(modifier = modifier.weight(1f))
+    Box {
 
-        Image(
-            painter = painterResource(R.drawable.img_2022_big),
-            contentDescription = null,
-            modifier = modifier.fillMaxWidth(),
-            contentScale = ContentScale.FillBounds
-        )
+        ConstraintLayout(
+            modifier = modifier.fillMaxSize()
+        ) {
 
-        Spacer(modifier = modifier.weight(0.4f))
+            val (yearFirst2, year0, yearSecond2, year3, text, bottomLogo) = createRefs()
 
-        PrimaryText(story = story, modifier = modifier)
+            // First 2 in 2023
+            NumberImage(
+                depthMultiplier = 8,
+                imageRes = R.drawable.img_2,
+                modifier = Modifier
+                    .offset(
+                        x = 230.dp,
+                        y = 150.dp,
+                    )
+                    .constrainAs(yearFirst2) {
+                        bottom.linkTo(text.top)
+                        end.linkTo(text.start)
+                    }
+            )
 
-        Spacer(modifier = modifier.weight(1f))
+            // 3 in 2023
+            NumberImage(
+                depthMultiplier = 10,
+                imageRes = R.drawable.img_3,
+                modifier = Modifier
+                    .offset(
+                        x = (-240).dp,
+                        y = (-150).dp,
+                    )
+                    .constrainAs(year3) {
+                        top.linkTo(text.bottom)
+                        start.linkTo(text.end)
+                    }
+            )
 
-        PodcastLogoWhite()
+            TitleView(
+                depthMultiplier = 14,
+                modifier = Modifier.constrainAs(text) {
+                    top.linkTo(parent.top)
+                    bottom.linkTo(parent.bottom)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                }
+            )
 
-        Spacer(modifier = modifier.height(30.dp))
+            // 0 in 2023
+            NumberImage(
+                depthMultiplier = 20,
+                imageRes = R.drawable.img_0,
+                modifier = Modifier
+                    .offset(
+                        x = (-140).dp,
+                        y = 70.dp,
+                    )
+                    .constrainAs(year0) {
+                        bottom.linkTo(text.top)
+                        start.linkTo(text.end)
+                    }
+            )
+
+            // Second 2 in 2023
+            NumberImage(
+                depthMultiplier = 17,
+                imageRes = R.drawable.img_2_1,
+                modifier = Modifier
+                    .offset(
+                        x = 125.dp,
+                        y = (-85).dp,
+                    )
+                    .constrainAs(yearSecond2) {
+                        top.linkTo(text.bottom)
+                        end.linkTo(text.start)
+                    }
+            )
+
+            StoryAppLogo(
+                modifier = Modifier.constrainAs(bottomLogo) {
+                    bottom.linkTo(parent.bottom, margin = 30.dp)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                }
+            )
+        }
     }
 }
 
 @Composable
-private fun PrimaryText(
-    story: StoryIntro,
+private fun TitleView(
+    depthMultiplier: Int,
     modifier: Modifier,
 ) {
-    val language = Locale.current.language
-    val textResId = if (language == "en") {
-        LR.string.end_of_year_story_intro_title_english_only
-    } else {
-        LR.string.end_of_year_story_intro_title
+    ParallaxView(
+        depthMultiplier = depthMultiplier,
+        modifier = modifier,
+        content = { parallaxModifier, biasAlignment ->
+            Image(
+                painter = painterResource(R.drawable.pocket_casts_playback),
+                contentDescription = "Pocket Casts Playback", // Intentionally not translated
+                contentScale = ContentScale.FillBounds,
+                modifier = parallaxModifier,
+                alignment = biasAlignment,
+            )
+        }
+    )
+}
+
+@Composable
+private fun NumberImage(
+    depthMultiplier: Int,
+    @DrawableRes imageRes: Int,
+    modifier: Modifier = Modifier,
+) {
+    ParallaxView(
+        depthMultiplier = depthMultiplier,
+        modifier = modifier,
+    ) { parallaxModifier, biasAlignment ->
+        Box(
+            modifier = parallaxModifier
+        ) {
+            Image(
+                painter = painterResource(imageRes),
+                contentDescription = null,
+                alignment = biasAlignment,
+            )
+        }
     }
-    val text = stringResource(id = textResId)
-    StoryPrimaryText(text = text, color = story.tintColor, modifier = modifier)
 }
 
 @Preview(showBackground = true)
@@ -85,9 +164,7 @@ private fun StoryIntroPreview(
 ) {
     AppTheme(themeType) {
         Surface(color = Color.Black) {
-            StoryIntroView(
-                StoryIntro(),
-            )
+            StoryIntroView()
         }
     }
 }

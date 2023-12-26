@@ -5,9 +5,11 @@ import au.com.shiftyjelly.pocketcasts.models.to.EpisodeItem
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import io.reactivex.Single
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.Path
 import java.util.Date
@@ -56,19 +58,32 @@ data class PodcastRatingsResponse(
     fun toPodcastRatings(podcastUuid: String) = PodcastRatings(
         podcastUuid = podcastUuid,
         average = average ?: 0.0,
-        total = total
+        total = total ?: 0
     )
 }
 
 interface PodcastCacheServer {
-    @GET("/mobile/podcast/full/{podcastUuid}/{pageNumber}/{sortOption}/{episodeLimit}")
-    fun getPodcastAndEpisodesRaw(@Path("podcastUuid") podcastUuid: String, @Path("pageNumber") pageNumber: Int = 0, @Path("sortOption") sortOption: Int = 3, @Path("episodeLimit") episodeLimit: Int = 0): Single<Response<PodcastResponse>>
+    @GET("/mobile/podcast/full/{podcastUuid}")
+    fun getPodcastAndEpisodesRaw(@Path("podcastUuid") podcastUuid: String): Single<Response<PodcastResponse>>
 
-    @GET("/mobile/podcast/full/{podcastUuid}/{pageNumber}/{sortOption}/{episodeLimit}")
-    fun getPodcastAndEpisodes(@Path("podcastUuid") podcastUuid: String, @Path("pageNumber") pageNumber: Int = 0, @Path("sortOption") sortOption: Int = 3, @Path("episodeLimit") episodeLimit: Int = 0): Single<PodcastResponse>
+    @GET("/mobile/podcast/full/{podcastUuid}")
+    fun getPodcastAndEpisodes(@Path("podcastUuid") podcastUuid: String): Single<PodcastResponse>
+
+    @GET("/mobile/show_notes/full/{podcastUuid}")
+    suspend fun getShowNotes(@Path("podcastUuid") podcastUuid: String): ShowNotesResponse
+
+    @GET("/mobile/show_notes/full/{podcastUuid}")
+    @Headers("Cache-Control: only-if-cached, max-stale=7776000") // Use offline cache available for 90 days
+    suspend fun getShowNotesCache(@Path("podcastUuid") podcastUuid: String): ShowNotesResponse
 
     @GET("/mobile/podcast/findbyepisode/{podcastUuid}/{episodeUuid}")
-    fun getPodcastAndEpisode(@Path("podcastUuid") podcastUuid: String, @Path("episodeUuid") episodeUuid: String): Single<PodcastResponse>
+    fun getPodcastAndEpisodeSingle(@Path("podcastUuid") podcastUuid: String, @Path("episodeUuid") episodeUuid: String): Single<PodcastResponse>
+
+    @GET("/mobile/podcast/findbyepisode/{podcastUuid}/{episodeUuid}")
+    suspend fun getPodcastAndEpisode(@Path("podcastUuid") podcastUuid: String, @Path("episodeUuid") episodeUuid: String): PodcastResponse
+
+    @GET("/mobile/episode/url/{podcastUuid}/{episodeUuid}")
+    suspend fun getEpisodeUrl(@Path("podcastUuid") podcastUuid: String, @Path("episodeUuid") episodeUuid: String): Response<ResponseBody>
 
     @POST("/mobile/podcast/episode/search")
     fun searchPodcastForEpisodes(@Body searchBody: SearchBody): Single<SearchResultBody>

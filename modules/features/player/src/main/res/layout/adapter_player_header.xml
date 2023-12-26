@@ -208,16 +208,17 @@
                 app:layout_constraintTop_toTopOf="@+id/episodeTitle" />
 
             <au.com.shiftyjelly.pocketcasts.player.view.ChapterProgressCircle
+                android:id="@+id/chapterProgressCircle"
                 android:layout_width="30dp"
                 android:layout_height="30dp"
                 android:visibility="@{viewModel.isChaptersPresent}"
                 app:layout_constraintBottom_toBottomOf="@+id/nextChapter"
                 app:layout_constraintEnd_toEndOf="@+id/nextChapter"
                 app:layout_constraintStart_toStartOf="@+id/nextChapter"
-                app:layout_constraintTop_toTopOf="@+id/nextChapter"
-                app:progress="@{viewModel.chapter}" />
+                app:layout_constraintTop_toTopOf="@+id/nextChapter" />
 
             <TextView
+                android:id="@+id/chapterTimeRemaining"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
@@ -227,7 +228,6 @@
                 app:layout_constraintEnd_toEndOf="@+id/nextChapter"
                 app:layout_constraintStart_toStartOf="@+id/nextChapter"
                 app:layout_constraintTop_toBottomOf="@+id/nextChapter"
-                app:textRemaining="@{viewModel.chapter}"
                 tools:text="9m" />
 
             <au.com.shiftyjelly.pocketcasts.player.view.PlayerSeekBar
@@ -340,7 +340,7 @@
                 android:layout_marginTop="30dp"
                 android:layout_marginEnd="20dp"
                 android:layout_marginBottom="16dp"
-                android:background="@drawable/shelf"
+                android:background="@drawable/player_shelf"
                 android:gravity="center"
                 android:orientation="horizontal"
                 android:paddingLeft="8dp"
@@ -418,6 +418,13 @@
                     android:id="@+id/played"
                     android:contentDescription="@string/mark_as_played"
                     app:srcCompat="@drawable/ic_tick_circle_ol_32"
+                    app:tint="?attr/player_contrast_03"
+                    style="@style/shelf_item" />
+
+                <ImageButton
+                    android:id="@+id/bookmark"
+                    android:contentDescription="@string/add_bookmark"
+                    app:srcCompat="@drawable/ic_bookmark"
                     app:tint="?attr/player_contrast_03"
                     style="@style/shelf_item" />
 

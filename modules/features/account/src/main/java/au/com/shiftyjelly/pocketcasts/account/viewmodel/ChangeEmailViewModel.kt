@@ -1,13 +1,13 @@
 package au.com.shiftyjelly.pocketcasts.account.viewmodel
 
-import androidx.lifecycle.MutableLiveData
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.viewModelScope
 import au.com.shiftyjelly.pocketcasts.repositories.sync.SyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import io.reactivex.disposables.CompositeDisposable
-import io.reactivex.rxkotlin.addTo
-import io.reactivex.rxkotlin.subscribeBy
-import io.reactivex.schedulers.Schedulers
-import timber.log.Timber
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -18,8 +18,8 @@ class ChangeEmailViewModel
 
     var existingEmail = syncManager.getEmail()
 
-    val changeEmailState = MutableLiveData<ChangeEmailState>().apply { value = ChangeEmailState.Empty }
-    private val disposables = CompositeDisposable()
+    private val _changeEmailState = mutableStateOf<ChangeEmailState>(ChangeEmailState.Empty)
+    val changeEmailState: State<ChangeEmailState> = _changeEmailState
 
     private fun errorUpdate(error: ChangeEmailError, add: Boolean, message: String?) {
         val errors = mutableSetOf<ChangeEmailError>()
@@ -31,9 +31,9 @@ class ChangeEmailViewModel
         }
         if (add) errors.add(error) else errors.remove(error)
         if (errors.isNotEmpty()) {
-            changeEmailState.value = ChangeEmailState.Failure(errors, message)
+            _changeEmailState.value = ChangeEmailState.Failure(errors, message)
         } else {
-            changeEmailState.postValue(ChangeEmailState.Empty)
+            _changeEmailState.value = ChangeEmailState.Empty
         }
     }
 
@@ -61,32 +61,29 @@ class ChangeEmailViewModel
     }
 
     fun changeEmail() {
-        val emailString = email.value ?: ""
-        val pwdString = password.value ?: ""
-        if (emailString.isEmpty() || pwdString.isEmpty()) {
-            return
-        }
-        changeEmailState.postValue(ChangeEmailState.Loading)
-
-        syncManager.emailChange(emailString, pwdString)
-            .subscribeOn(Schedulers.io())
-            .doOnSuccess { response ->
-                val success = response.success ?: false
-                if (success) {
-                    existingEmail = emailString
-                    changeEmailState.postValue(ChangeEmailState.Success("OK"))
-                } else {
-                    val errors = mutableSetOf(ChangeEmailError.SERVER)
-                    changeEmailState.postValue(ChangeEmailState.Failure(errors, response.message))
-                }
+        viewModelScope.launch {
+            val emailString = email.value ?: ""
+            val pwdString = password.value ?: ""
+            if (emailString.isEmpty() || pwdString.isEmpty()) {
+                return@launch
             }
-            .subscribeBy(onError = { Timber.e(it) })
-            .addTo(disposables)
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        disposables.clear()
+            _changeEmailState.value = ChangeEmailState.Loading
+            try {
+                withContext(Dispatchers.IO) {
+                    val response = syncManager.emailChange(emailString, pwdString)
+                    val success = response.success ?: false
+                    if (success) {
+                        existingEmail = emailString
+                        _changeEmailState.value = ChangeEmailState.Success("OK")
+                    } else {
+                        val errors = mutableSetOf(ChangeEmailError.SERVER)
+                        _changeEmailState.value = ChangeEmailState.Failure(errors, response.message)
+                    }
+                }
+            } catch (e: Exception) {
+                _changeEmailState.value = ChangeEmailState.Failure(mutableSetOf(ChangeEmailError.SERVER), e.message)
+            }
+        }
     }
 }
 

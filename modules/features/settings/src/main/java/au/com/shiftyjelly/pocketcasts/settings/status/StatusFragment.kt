@@ -28,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,7 @@ import au.com.shiftyjelly.pocketcasts.compose.bars.ThemedTopAppBar
 import au.com.shiftyjelly.pocketcasts.compose.theme
 import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
+import au.com.shiftyjelly.pocketcasts.views.helper.UiUtil
 import dagger.hilt.android.AndroidEntryPoint
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
 
@@ -49,6 +51,7 @@ class StatusFragment : BaseFragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return ComposeView(requireContext()).apply {
             setContent {
+                UiUtil.hideKeyboard(LocalView.current)
                 AppThemeWithBackground(theme.activeTheme) {
                     StatusPage(
                         viewModel = viewModel,
@@ -216,9 +219,9 @@ fun ServiceStatusRow(title: String, summary: String, help: String, status: Servi
     }
 }
 
-@Composable
 @Preview
-fun PreviewServiceStatusRow() {
+@Composable
+private fun PreviewServiceStatusRow() {
     MaterialTheme {
         ServiceStatusRow(
             title = stringResource(LR.string.settings_status_service_internet),

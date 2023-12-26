@@ -8,6 +8,7 @@ import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.UpNextChange
 import au.com.shiftyjelly.pocketcasts.models.entity.toUpNextEpisode
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.preferences.model.LastPlayedList
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadHelper
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.EpisodeManager
@@ -154,9 +155,19 @@ class UpNextQueueImpl @Inject constructor(
         return queueEpisodes.any { it.uuid == uuid } || (currentEpisode?.let { it.uuid == uuid } ?: false)
     }
 
-    override suspend fun playNow(episode: BaseEpisode, onAdd: (() -> Unit)?) = withContext(coroutineContext) {
+    override suspend fun playNow(
+        episode: BaseEpisode,
+        automaticUpNextSource: AutomaticUpNextSource?,
+        onAdd: (() -> Unit)?,
+    ) = withContext(coroutineContext) {
         // Don't build an Up Next if it is already empty
         if (queueEpisodes.isEmpty()) {
+            // when the upNextQueue is empty, save the source for auto playing the next episode
+            automaticUpNextSource?.let {
+                LastPlayedList.fromString(it.uuid).let { lastPlayedList ->
+                    settings.lastLoadedFromPodcastOrFilterUuid.set(lastPlayedList)
+                }
+            }
             saveChanges(UpNextAction.ClearAll)
         }
         saveChanges(UpNextAction.PlayNow(episode, onAdd))
@@ -295,10 +306,16 @@ class UpNextQueueImpl @Inject constructor(
         if (episode.isArchived) {
             episodeManager.unarchive(episode)
         }
+
+        // clear last loaded uuid if anything gets added to the up next queue
+        val hasQueuedItems = currentEpisode != null
+        if (hasQueuedItems) {
+            settings.lastLoadedFromPodcastOrFilterUuid.set(LastPlayedList.None)
+        }
     }
 
     private fun downloadIfPossible(episode: BaseEpisode, downloadManager: DownloadManager) {
-        if (settings.isUpNextAutoDownloaded()) {
+        if (settings.autoDownloadUpNext.value) {
             DownloadHelper.addAutoDownloadedEpisodeToQueue(episode, "up next auto download", downloadManager, episodeManager)
         }
     }

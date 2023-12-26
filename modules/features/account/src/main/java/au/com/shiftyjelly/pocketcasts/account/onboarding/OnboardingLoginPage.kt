@@ -113,9 +113,9 @@ internal fun OnboardingLoginPage(
                 modifier = Modifier.padding(16.dp),
             )
 
-            state.serverErrorMessage?.let {
+            state.errorMessage?.let { errorMessage ->
                 TextP40(
-                    text = it,
+                    text = errorMessage,
                     color = MaterialTheme.theme.colors.support05,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
@@ -148,7 +148,7 @@ internal fun OnboardingLoginPage(
 
 @Preview(showBackground = true)
 @Composable
-fun OnboardingLoginPage_Preview(
+private fun OnboardingLoginPage_Preview(
     @PreviewParameter(ThemePreviewParameterProvider::class) themeType: Theme.ThemeType,
 ) {
     AppThemeWithBackground(themeType) {

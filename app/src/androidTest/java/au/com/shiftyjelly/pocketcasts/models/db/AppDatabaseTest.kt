@@ -142,6 +142,9 @@ class AppDatabaseTest {
                 AppDatabase.MIGRATION_73_74,
                 AppDatabase.MIGRATION_74_75,
                 AppDatabase.MIGRATION_75_76,
+                AppDatabase.MIGRATION_76_77,
+                AppDatabase.MIGRATION_77_78,
+                AppDatabase.MIGRATION_78_79,
             )
             .build()
         // close the database and release any stream resources when the test finishes
@@ -150,7 +153,7 @@ class AppDatabaseTest {
     }
 
     private fun countRows(db: SupportSQLiteDatabase?, tableName: String): Int {
-        return db?.query("select count(*) from $tableName", null).use { cursor ->
+        return db?.query("select count(*) from $tableName").use { cursor ->
             cursor?.let {
                 it.moveToFirst()
                 return@use it.getInt(0)

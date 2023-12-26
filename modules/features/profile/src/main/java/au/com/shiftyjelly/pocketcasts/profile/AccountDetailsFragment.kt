@@ -42,12 +42,12 @@ import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingLauncher
 import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingUpgradeSource
 import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
 import au.com.shiftyjelly.pocketcasts.utils.Util
-import au.com.shiftyjelly.pocketcasts.utils.days
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import au.com.shiftyjelly.pocketcasts.views.dialog.ConfirmationDialog
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
 import dagger.hilt.android.AndroidEntryPoint
-import java.util.Date
 import javax.inject.Inject
 import au.com.shiftyjelly.pocketcasts.cartheme.R as CR
 import au.com.shiftyjelly.pocketcasts.images.R as IR
@@ -109,22 +109,23 @@ class AccountDetailsFragment : BaseFragment() {
         viewModel.viewState.observe(viewLifecycleOwner) { (signInState, subscription, deleteAccountState) ->
             var giftExpiring = false
             (signInState as? SignInState.SignedIn)?.subscriptionStatus?.let { status ->
-                val plusStatus = status as? SubscriptionStatus.Plus ?: return@let
-                val daysLessThan30 = plusStatus.expiry.before(Date(Date().time + 30.days()))
-                giftExpiring = (daysLessThan30 && !status.autoRenew)
+                val subscriptionStatus = status as? SubscriptionStatus.Paid ?: return@let
+                giftExpiring = subscriptionStatus.isExpiring
             }
 
-            binding.cancelViewGroup?.isVisible = signInState.isSignedInAsPlusPaid
-            binding.btnCancelSub?.isVisible = signInState.isSignedInAsPlusPaid
-            // TODO: Patron - hide if upgraded to patron
-            binding.upgradeAccountGroup?.isVisible = signInState.isSignedInAsPlus && BuildConfig.ADD_PATRON_ENABLED
+            binding.cancelViewGroup?.isVisible = signInState.isSignedInAsPaid
+            binding.btnCancelSub?.isVisible = signInState.isSignedInAsPaid
+            binding.upgradeAccountGroup?.isVisible = signInState.isSignedInAsPlus &&
+                !giftExpiring &&
+                FeatureFlag.isEnabled(Feature.ADD_PATRON_ENABLED)
 
             binding.userUpgradeComposeView?.apply {
                 setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
                 setContent {
                     AppTheme(theme.activeTheme) {
                         val showUpgradeBanner = subscription != null && (signInState.isSignedInAsFree || giftExpiring)
-                        binding.dividerView15?.isVisible = showUpgradeBanner && BuildConfig.ADD_PATRON_ENABLED
+                        binding.dividerView15?.isVisible = showUpgradeBanner &&
+                            FeatureFlag.isEnabled(Feature.ADD_PATRON_ENABLED)
                         if (showUpgradeBanner) {
                             ProfileUpgradeBanner(
                                 onClick = {

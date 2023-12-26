@@ -8,19 +8,22 @@ import au.com.shiftyjelly.pocketcasts.models.type.Subscription
 import au.com.shiftyjelly.pocketcasts.models.type.Subscription.Companion.PATRON_MONTHLY_PRODUCT_ID
 import au.com.shiftyjelly.pocketcasts.models.type.Subscription.Companion.PATRON_YEARLY_PRODUCT_ID
 import au.com.shiftyjelly.pocketcasts.models.type.Subscription.Companion.PLUS_MONTHLY_PRODUCT_ID
-import au.com.shiftyjelly.pocketcasts.models.type.Subscription.Companion.PLUS_PRODUCT_BASE
 import au.com.shiftyjelly.pocketcasts.models.type.Subscription.Companion.PLUS_YEARLY_PRODUCT_ID
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionFrequency
+import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionMapper.mapProductIdToTier
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionPlatform
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionPricingPhase
+import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionTier
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionType
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
-import au.com.shiftyjelly.pocketcasts.repositories.BuildConfig
+import au.com.shiftyjelly.pocketcasts.repositories.di.ApplicationScope
 import au.com.shiftyjelly.pocketcasts.repositories.sync.SyncManager
 import au.com.shiftyjelly.pocketcasts.servers.sync.SubscriptionPurchaseRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.SubscriptionResponse
 import au.com.shiftyjelly.pocketcasts.servers.sync.SubscriptionStatusResponse
 import au.com.shiftyjelly.pocketcasts.utils.Optional
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.AcknowledgePurchaseResponseListener
@@ -43,9 +46,11 @@ import io.reactivex.Flowable
 import io.reactivex.Single
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.rx2.await
 import timber.log.Timber
 import java.util.Date
@@ -56,20 +61,21 @@ import javax.inject.Singleton
 class SubscriptionManagerImpl @Inject constructor(
     private val syncManager: SyncManager,
     private val settings: Settings,
+    @ApplicationScope private val applicationScope: CoroutineScope
 ) : SubscriptionManager,
     PurchasesUpdatedListener,
     AcknowledgePurchaseResponseListener {
 
     private var cachedSubscriptionStatus: SubscriptionStatus?
-        get() = settings.getCachedSubscription()
-        set(value) = settings.setCachedSubscription(value)
+        get() = settings.cachedSubscriptionStatus.value
+        set(value) = settings.cachedSubscriptionStatus.set(value)
 
     private var subscriptionStatus = BehaviorRelay.create<Optional<SubscriptionStatus>>().apply {
         val cachedStatus = cachedSubscriptionStatus
         if (cachedStatus != null) {
             accept(Optional.of(cachedStatus))
         } else {
-            accept(Optional.of(SubscriptionStatus.Free()))
+            accept(Optional.of(null))
         }
     }
 
@@ -77,7 +83,7 @@ class SubscriptionManagerImpl @Inject constructor(
     private val productDetails = BehaviorRelay.create<ProductDetailsState>()
     private val purchaseEvents = PublishRelay.create<PurchaseEvent>()
     private val subscriptionChangedEvents = PublishRelay.create<SubscriptionChangedEvent>()
-    private var freeTrialEligible: Boolean = true
+    private var freeTrialEligible = HashMap<Subscription.SubscriptionTier, Boolean>()
 
     override fun signOut() {
         clearCachedStatus()
@@ -115,15 +121,15 @@ class SubscriptionManagerImpl @Inject constructor(
                 subscriptionStatus.accept(Optional.of(it))
                 val oldStatus = cachedSubscriptionStatus
                 if (oldStatus != it) {
-                    if (it is SubscriptionStatus.Plus && oldStatus is SubscriptionStatus.Free) {
+                    if (it is SubscriptionStatus.Paid && oldStatus is SubscriptionStatus.Free) {
                         subscriptionChangedEvents.accept(SubscriptionChangedEvent.AccountUpgradedToPlus)
-                    } else if (it is SubscriptionStatus.Free && oldStatus is SubscriptionStatus.Plus) {
+                    } else if (it is SubscriptionStatus.Free && oldStatus is SubscriptionStatus.Paid) {
                         subscriptionChangedEvents.accept(SubscriptionChangedEvent.AccountDowngradedToFree)
                     }
                 }
                 cachedSubscriptionStatus = it
 
-                if (!it.isLifetimePlus && it is SubscriptionStatus.Plus && it.platform == SubscriptionPlatform.GIFT) { // This account is a trial account
+                if (!it.isLifetimePlus && it is SubscriptionStatus.Paid && it.platform == SubscriptionPlatform.GIFT) { // This account is a trial account
                     settings.setTrialFinishedSeen(false) // Make sure on expiry we show the trial finished dialog
                 }
             }
@@ -162,7 +168,7 @@ class SubscriptionManagerImpl @Inject constructor(
                     .setProductType(BillingClient.ProductType.SUBS)
                     .build(),
             ).apply {
-                if (BuildConfig.ADD_PATRON_ENABLED) {
+                if (FeatureFlag.isEnabled(Feature.ADD_PATRON_ENABLED)) {
                     add(
                         QueryProductDetailsParams.Product.newBuilder()
                             .setProductId(PATRON_MONTHLY_PRODUCT_ID)
@@ -194,7 +200,6 @@ class SubscriptionManagerImpl @Inject constructor(
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     override fun onPurchasesUpdated(billingResult: BillingResult, purchases: MutableList<Purchase>?) {
         if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
             for (purchase in purchases) {
@@ -204,7 +209,7 @@ class SubscriptionManagerImpl @Inject constructor(
             purchaseEvents.accept(PurchaseEvent.Cancelled(billingResult.responseCode))
         } else {
             if (billingResult.responseCode == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED) {
-                GlobalScope.launch {
+                applicationScope.launch {
                     val purchasesResult = getPurchases()
                     if (purchasesResult == null) {
                         LogBuffer.e(LogBuffer.TAG_SUBSCRIPTIONS, "unable to update purchase because billing result returned null purchases")
@@ -250,12 +255,11 @@ class SubscriptionManagerImpl @Inject constructor(
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     override fun handlePurchase(purchase: Purchase) {
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
             Timber.d("Purchase: ${purchase.purchaseToken}")
             // Grant entitlement to the user.
-            GlobalScope.launch {
+            applicationScope.launch {
                 try {
                     sendPurchaseToServer(purchase)
                     // Acknowledge the purchase if it hasn't already been acknowledged.
@@ -265,7 +269,12 @@ class SubscriptionManagerImpl @Inject constructor(
                             .build()
                         billingClient.acknowledgePurchase(acknowledgePurchaseParams, this@SubscriptionManagerImpl)
                     }
-                    updateFreeTrialEligible(false)
+                    purchase.products.map {
+                        mapProductIdToTier(it.toString())
+                    }.distinct().forEach {
+                        updateFreeTrialEligible(it, false)
+                    }
+
                     FirebaseAnalyticsTracker.plusPurchased()
                 } catch (e: Exception) {
                     LogBuffer.e(LogBuffer.TAG_SUBSCRIPTIONS, e, "Could not send purchase info")
@@ -310,9 +319,12 @@ class SubscriptionManagerImpl @Inject constructor(
             .build()
 
         billingClient.queryPurchaseHistoryAsync(queryPurchaseHistoryParams) { _, purchases ->
-            // TODO: Patron - Update free trial eligibility for Patron
-            if (purchases?.any { it.products.toString().contains(PLUS_PRODUCT_BASE) } == true) {
-                updateFreeTrialEligible(false)
+            purchases?.forEach {
+                it.products.map { productId ->
+                    mapProductIdToTier(productId)
+                }.distinct().forEach { tier ->
+                    updateFreeTrialEligible(tier, false)
+                }
             }
         }
     }
@@ -326,18 +338,49 @@ class SubscriptionManagerImpl @Inject constructor(
         return billingClient.queryPurchasesAsync(params = queryPurchasesParams)
     }
 
-    override fun launchBillingFlow(activity: Activity, productDetails: ProductDetails, offerToken: String): BillingResult {
-        val productDetailsParams =
-            BillingFlowParams.ProductDetailsParams.newBuilder()
-                .setProductDetails(productDetails)
-                .setOfferToken(offerToken)
-                .build()
-        val productDetailsParamsList = listOf(productDetailsParams)
-        val billingFlowParams =
-            BillingFlowParams.newBuilder()
-                .setProductDetailsParamsList(productDetailsParamsList)
-                .build()
-        return billingClient.launchBillingFlow(activity, billingFlowParams)
+    override fun launchBillingFlow(activity: Activity, productDetails: ProductDetails, offerToken: String) {
+        applicationScope.launch {
+            val productDetailsParams =
+                BillingFlowParams.ProductDetailsParams.newBuilder()
+                    .setProductDetails(productDetails)
+                    .setOfferToken(offerToken)
+                    .build()
+            val productDetailsParamsList = listOf(productDetailsParams)
+            var billingFlowParams =
+                BillingFlowParams.newBuilder()
+                    .setProductDetailsParamsList(productDetailsParamsList)
+
+            settings.cachedSubscriptionStatus.value?.let { subscriptionStatus ->
+                if (
+                    shouldAllowUpgradePlan(
+                        subscribedPlanStatus = subscriptionStatus,
+                        newPlanDetails = productDetails,
+                    )
+                ) {
+                    val purchasesResult = getPurchases()
+                    if (purchasesResult == null) {
+                        LogBuffer.e(
+                            LogBuffer.TAG_SUBSCRIPTIONS,
+                            "unable to upgrade plan because billing result returned null purchases"
+                        )
+                        return@launch
+                    }
+
+                    if (purchasesResult.purchasesList.isNotEmpty()) {
+                        val existingPurchase = purchasesResult.purchasesList.first()
+                        billingFlowParams = billingFlowParams.setSubscriptionUpdateParams(
+                            BillingFlowParams.SubscriptionUpdateParams.newBuilder()
+                                .setOldPurchaseToken(existingPurchase.purchaseToken)
+                                /* User is changing subscription entitlement, proration rate applied at runtime (https://rb.gy/e876y)
+                                   Also, since upgrading to a more expensive tier, recommended replacement mode is CHARGE_PRORATED_PRICE (https://rb.gy/acghw) */
+                                .setSubscriptionReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.CHARGE_PRORATED_PRICE)
+                                .build()
+                        )
+                    }
+                }
+            }
+            billingClient.launchBillingFlow(activity, billingFlowParams.build())
+        }
     }
 
     override fun getCachedStatus(): SubscriptionStatus? {
@@ -349,10 +392,10 @@ class SubscriptionManagerImpl @Inject constructor(
         subscriptionStatus.accept(Optional.empty())
     }
 
-    override fun isFreeTrialEligible() = freeTrialEligible
+    override fun isFreeTrialEligible(tier: Subscription.SubscriptionTier) = freeTrialEligible[tier] ?: true
 
-    override fun updateFreeTrialEligible(eligible: Boolean) {
-        freeTrialEligible = eligible
+    override fun updateFreeTrialEligible(tier: Subscription.SubscriptionTier, eligible: Boolean) {
+        freeTrialEligible[tier] = eligible
     }
 
     override fun getDefaultSubscription(
@@ -377,7 +420,46 @@ class SubscriptionManagerImpl @Inject constructor(
             }
         } ?: tierSubscriptions.firstOrNull() // If no matching subscription is found, select first available one
     }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun freeTrialForSubscriptionTierFlow(subscriptionTier: Subscription.SubscriptionTier) = this
+        .observeProductDetails()
+        .asFlow()
+        .transformLatest { productDetails ->
+            val subscriptions = when (productDetails) {
+                is ProductDetailsState.Error -> null
+                is ProductDetailsState.Loaded -> productDetails.productDetails.mapNotNull { productDetailsState ->
+                    Subscription.fromProductDetails(
+                        productDetails = productDetailsState,
+                        isFreeTrialEligible = isFreeTrialEligible(
+                            mapProductIdToTier(productDetailsState.productId)
+                        )
+                    )
+                }
+            } ?: emptyList()
+
+            val updatedSubscriptions = subscriptions.filter { it.tier == subscriptionTier }
+            val defaultSubscription = getDefaultSubscription(
+                subscriptions = updatedSubscriptions,
+                tier = subscriptionTier,
+            )
+            emit(
+                FreeTrial(
+                    subscriptionTier = subscriptionTier,
+                    exists = defaultSubscription?.trialPricingPhase != null,
+                )
+            )
+        }
 }
+
+private fun shouldAllowUpgradePlan(
+    subscribedPlanStatus: SubscriptionStatus,
+    newPlanDetails: ProductDetails
+) = subscribedPlanStatus is SubscriptionStatus.Paid &&
+    subscribedPlanStatus.tier == SubscriptionTier.PLUS &&
+    subscribedPlanStatus.platform == SubscriptionPlatform.ANDROID &&
+    newPlanDetails.productId in listOf(PATRON_MONTHLY_PRODUCT_ID, PATRON_YEARLY_PRODUCT_ID) &&
+    FeatureFlag.isEnabled(Feature.ADD_PATRON_ENABLED)
 
 sealed class ProductDetailsState {
     data class Loaded(val productDetails: List<ProductDetails>) : ProductDetailsState()
@@ -398,6 +480,11 @@ sealed class SubscriptionChangedEvent {
     object AccountDowngradedToFree : SubscriptionChangedEvent()
 }
 
+data class FreeTrial(
+    val subscriptionTier: Subscription.SubscriptionTier,
+    val exists: Boolean = false,
+)
+
 private fun SubscriptionStatusResponse.toStatus(): SubscriptionStatus {
     val originalPlatform = SubscriptionPlatform.values().getOrNull(platform) ?: SubscriptionPlatform.NONE
 
@@ -408,12 +495,14 @@ private fun SubscriptionStatusResponse.toStatus(): SubscriptionStatus {
     } else {
         val freq = SubscriptionFrequency.values().getOrNull(frequency) ?: SubscriptionFrequency.NONE
         val enumType = SubscriptionType.values().getOrNull(type) ?: SubscriptionType.NONE
-        SubscriptionStatus.Plus(expiryDate ?: Date(), autoRenewing, giftDays, freq, originalPlatform, subs, enumType, index)
+        val enumTier = SubscriptionTier.fromString(tier, enumType)
+        SubscriptionStatus.Paid(expiryDate ?: Date(), autoRenewing, giftDays, freq, originalPlatform, subs, enumType, enumTier, index)
     }
 }
 
 private fun SubscriptionResponse.toSubscription(): SubscriptionStatus.Subscription {
     val enumType = SubscriptionType.values().getOrNull(type) ?: SubscriptionType.NONE
+    val enumTier = SubscriptionTier.fromString(tier, enumType)
     val freq = SubscriptionFrequency.values().getOrNull(frequency) ?: SubscriptionFrequency.NONE
-    return SubscriptionStatus.Subscription(enumType, freq, expiryDate, autoRenewing, updateUrl)
+    return SubscriptionStatus.Subscription(enumType, enumTier, freq, expiryDate, autoRenewing, updateUrl)
 }

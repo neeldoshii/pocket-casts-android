@@ -5,14 +5,29 @@ import au.com.shiftyjelly.pocketcasts.models.entity.BaseEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.UserEpisode
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeStatusEnum
+import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionTier
 import au.com.shiftyjelly.pocketcasts.player.R
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import au.com.shiftyjelly.pocketcasts.images.R as IR
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
 import au.com.shiftyjelly.pocketcasts.views.R as VR
 
 object ShelfItems {
-    val itemsList = listOf(ShelfItem.Effects, ShelfItem.Sleep, ShelfItem.Star, ShelfItem.Share, ShelfItem.Podcast, ShelfItem.Cast, ShelfItem.Played, ShelfItem.Archive)
-    val items = itemsList.associateBy { it.id }
+    val itemsList = buildList {
+        add(ShelfItem.Effects)
+        add(ShelfItem.Sleep)
+        add(ShelfItem.Star)
+        add(ShelfItem.Share)
+        add(ShelfItem.Podcast)
+        add(ShelfItem.Cast)
+        add(ShelfItem.Played)
+        if (FeatureFlag.isEnabled(Feature.BOOKMARKS_ENABLED)) {
+            add(ShelfItem.Bookmark)
+        }
+        add(ShelfItem.Archive)
+    }
+    private val items = itemsList.associateBy { it.id }
 
     fun itemForId(id: String): ShelfItem? {
         return items[id]
@@ -24,6 +39,7 @@ sealed class ShelfItem(
     var title: (BaseEpisode?) -> Int,
     var iconRes: (BaseEpisode?) -> Int,
     val shownWhen: Shown,
+    val tier: SubscriptionTier = SubscriptionTier.NONE,
     val analyticsValue: String,
     @StringRes val subtitle: Int? = null
 ) {
@@ -38,7 +54,7 @@ sealed class ShelfItem(
         title = { LR.string.podcast_playback_effects },
         iconRes = { IR.drawable.ic_effects_off },
         shownWhen = Shown.Always,
-        analyticsValue = "playback_effects"
+        analyticsValue = "playback_effects",
     )
 
     object Sleep : ShelfItem(
@@ -55,7 +71,7 @@ sealed class ShelfItem(
         subtitle = LR.string.player_actions_hidden_for_custom,
         iconRes = { if (it is PodcastEpisode && it.isStarred) IR.drawable.ic_star_filled else IR.drawable.ic_star },
         shownWhen = Shown.EpisodeOnly,
-        analyticsValue = "star_episode"
+        analyticsValue = "star_episode",
     )
 
     object Share : ShelfItem(
@@ -91,6 +107,15 @@ sealed class ShelfItem(
         analyticsValue = "mark_as_played"
     )
 
+    object Bookmark : ShelfItem(
+        id = "bookmark",
+        title = { LR.string.add_bookmark },
+        iconRes = { IR.drawable.ic_bookmark },
+        shownWhen = Shown.Always,
+        tier = SubscriptionTier.PATRON,
+        analyticsValue = "add_bookmark"
+    )
+
     object Archive : ShelfItem(
         id = "archive",
         title = { if (it is UserEpisode) LR.string.delete else LR.string.archive },
@@ -121,6 +146,7 @@ sealed class ShelfItem(
             }
         },
         shownWhen = Shown.Always,
+        tier = SubscriptionTier.NONE,
         analyticsValue = "download"
     )
 }

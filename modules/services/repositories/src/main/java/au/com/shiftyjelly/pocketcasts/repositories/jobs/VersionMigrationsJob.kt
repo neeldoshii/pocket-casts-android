@@ -7,7 +7,7 @@ import android.app.job.JobScheduler
 import android.app.job.JobService
 import android.content.ComponentName
 import android.content.Context
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.db.AppDatabase
 import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
@@ -171,7 +171,7 @@ class VersionMigrationsJob : JobService() {
         episodes.forEach { episode ->
             playbackManager.removeEpisode(
                 episodeToRemove = episode,
-                source = AnalyticsSource.UNKNOWN,
+                source = SourceView.UNKNOWN,
                 userInitiated = false
             )
             appDatabase.episodeDao().delete(episode)
@@ -181,12 +181,12 @@ class VersionMigrationsJob : JobService() {
 
     private fun performV7Migration() {
         // We want v6 users to keep defaulting to download, new users should get the new stream default
-        val currentStreamingPreference = if (settings.contains(Settings.PREFERENCE_GLOBAL_STREAMING_MODE)) settings.streamingMode() else false
-        settings.setStreamingMode(currentStreamingPreference)
+        val currentStreamingPreference = if (settings.contains(Settings.PREFERENCE_GLOBAL_STREAMING_MODE)) settings.streamingMode.value else false
+        settings.streamingMode.set(currentStreamingPreference)
     }
 
     private fun addUpNextAutoDownload() {
-        settings.setUpNextAutoDownloaded(!settings.streamingMode())
+        settings.autoDownloadUpNext.set(!settings.streamingMode.value)
     }
 
     private fun deletePodcastImages() {

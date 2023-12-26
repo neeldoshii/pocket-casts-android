@@ -1,16 +1,15 @@
-*   New Features:
-    *   Added the ability to see ratings for podcasts
-        ([#951](https://github.com/Automattic/pocket-casts-android/pull/951)).
+
+*   New Features
+    *   Display episode artwork from podcast feed on full-screen player and episode screens
+        ([#1599](https://github.com/Automattic/pocket-casts-android/pull/1599))
 *   Bug Fixes:
-    *   Fixed the discover categories sorting so that it is alphabetical in the device language
-        ([#942](https://github.com/Automattic/pocket-casts-android/pull/942)).
-    *   Fixed Japanese translations for the 'Show played episodes' setting in Automotive.
-        ([#890](https://github.com/Automattic/pocket-casts-android/issues/955)).
-    *   Fixed the listening stats.
-        ([#960](https://github.com/Automattic/pocket-casts-android/pull/960)).
-    *   Fixed crash on grouping by season
-        ([#962](https://github.com/Automattic/pocket-casts-android/pull/962)).
-*   Updates
-    *   Link users to support forum from within the app
-        ([#950](https://github.com/Automattic/pocket-casts-android/pull/950)).
+    *   Fix user files not getting deleted after marking an episode as played
+        ([#1548](https://github.com/Automattic/pocket-casts-android/pull/1548))
+    *   Fix crash when database emits unexpected null value
+        ([#1596](https://github.com/Automattic/pocket-casts-android/pull/1596))
+    *   Fix text being cut off in discover search bar at high zoom 
+        ([#1601](https://github.com/Automattic/pocket-casts-android/pull/1601))
+*   Updates:
+    *   Display dynamic colors for widget
+        ([#1588](https://github.com/Automattic/pocket-casts-android/pull/1588))
 

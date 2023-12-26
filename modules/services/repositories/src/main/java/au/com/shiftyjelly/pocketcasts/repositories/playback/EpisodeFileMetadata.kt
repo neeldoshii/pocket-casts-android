@@ -39,7 +39,7 @@ class EpisodeFileMetadata(val filenamePrefix: String? = null) {
 
     @UnstableApi
     fun read(tracks: Tracks?, settings: Settings, context: Context) {
-        return read(tracks, settings.getUseEmbeddedArtwork(), context)
+        return read(tracks, settings.useEmbeddedArtwork.value, context)
     }
 
     @UnstableApi
@@ -117,8 +117,6 @@ class EpisodeFileMetadata(val filenamePrefix: String? = null) {
             url = url?.toHttpUrlOrNull(),
             startTime = frame.startTimeMs,
             endTime = frame.endTimeMs,
-            startOffset = frame.startOffset,
-            endOffset = frame.endOffset,
             imagePath = imagePath,
             mimeType = mimeType
         )

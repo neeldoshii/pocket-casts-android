@@ -9,25 +9,30 @@ import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.Observer
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.entity.BaseEpisode
-import au.com.shiftyjelly.pocketcasts.models.entity.UserEpisode
 import au.com.shiftyjelly.pocketcasts.models.to.SignInState
 import au.com.shiftyjelly.pocketcasts.models.to.SubscriptionStatus
 import au.com.shiftyjelly.pocketcasts.podcasts.view.components.PlayButton
 import au.com.shiftyjelly.pocketcasts.podcasts.view.podcast.EpisodeListAdapter
+import au.com.shiftyjelly.pocketcasts.podcasts.viewmodel.EpisodeListBookmarkViewModel
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.profile.R
 import au.com.shiftyjelly.pocketcasts.profile.databinding.FragmentCloudFilesBinding
+import au.com.shiftyjelly.pocketcasts.repositories.bookmark.BookmarkManager
 import au.com.shiftyjelly.pocketcasts.repositories.chromecast.CastManager
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
 import au.com.shiftyjelly.pocketcasts.repositories.images.PodcastImageLoader
+import au.com.shiftyjelly.pocketcasts.repositories.playback.AutomaticUpNextSource
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
 import au.com.shiftyjelly.pocketcasts.repositories.playback.UpNextQueue
 import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
@@ -39,11 +44,14 @@ import au.com.shiftyjelly.pocketcasts.views.dialog.OptionsDialog
 import au.com.shiftyjelly.pocketcasts.views.extensions.setup
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragmentToolbar.ChromeCastButton.Shown
-import au.com.shiftyjelly.pocketcasts.views.helper.CloudDeleteHelper
 import au.com.shiftyjelly.pocketcasts.views.helper.EpisodeItemTouchHelper
 import au.com.shiftyjelly.pocketcasts.views.helper.NavigationIcon.BackArrow
+import au.com.shiftyjelly.pocketcasts.views.helper.SwipeButtonLayoutFactory
+import au.com.shiftyjelly.pocketcasts.views.helper.SwipeButtonLayoutViewModel
+import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectEpisodesHelper
 import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectHelper
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.roundToInt
 import au.com.shiftyjelly.pocketcasts.images.R as IR
@@ -56,17 +64,55 @@ class CloudFilesFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
     @Inject lateinit var playButtonListener: PlayButton.OnClickListener
     @Inject lateinit var settings: Settings
     @Inject lateinit var upNextQueue: UpNextQueue
-    @Inject lateinit var multiSelectHelper: MultiSelectHelper
+    @Inject lateinit var multiSelectHelper: MultiSelectEpisodesHelper
     @Inject lateinit var castManager: CastManager
     @Inject lateinit var analyticsTracker: AnalyticsTrackerWrapper
+    @Inject lateinit var bookmarkManager: BookmarkManager
 
     private lateinit var imageLoader: PodcastImageLoader
     lateinit var itemTouchHelper: EpisodeItemTouchHelper
 
     private val viewModel: CloudFilesViewModel by viewModels()
+    private val episodeListBookmarkViewModel: EpisodeListBookmarkViewModel by viewModels()
+    private val swipeButtonLayoutViewModel: SwipeButtonLayoutViewModel by viewModels()
     private var binding: FragmentCloudFilesBinding? = null
 
-    val adapter by lazy { EpisodeListAdapter(downloadManager, playbackManager, upNextQueue, settings, onRowClick, playButtonListener, imageLoader, multiSelectHelper, childFragmentManager) }
+    val adapter by lazy {
+        EpisodeListAdapter(
+            bookmarkManager = bookmarkManager,
+            downloadManager = downloadManager,
+            playbackManager = playbackManager,
+            upNextQueue = upNextQueue,
+            settings = settings,
+            onRowClick = onRowClick,
+            playButtonListener = playButtonListener,
+            imageLoader = imageLoader,
+            multiSelectHelper = multiSelectHelper,
+            fragmentManager = childFragmentManager,
+            swipeButtonLayoutFactory = SwipeButtonLayoutFactory(
+                swipeButtonLayoutViewModel = swipeButtonLayoutViewModel,
+                onItemUpdated = ::lazyNotifyItemChanged,
+                defaultUpNextSwipeAction = { settings.upNextSwipe.value },
+                context = requireContext(),
+                fragmentManager = parentFragmentManager,
+                swipeSource = EpisodeItemTouchHelper.SwipeSource.FILES,
+            )
+        )
+    }
+
+    // Cannot call notify.notifyItemChanged directly because the compiler gets confused
+    // when the adapter's constructor includes references to the adapter
+    private fun lazyNotifyItemChanged(
+        @Suppress("UNUSED_PARAMETER") episode: BaseEpisode,
+        index: Int
+    ) {
+        val recyclerView = binding?.recyclerView
+        recyclerView?.findViewHolderForAdapterPosition(index)?.let {
+            itemTouchHelper.clearView(recyclerView, it)
+        }
+
+        adapter.notifyItemChanged(index)
+    }
 
     private val onRowClick = { episode: BaseEpisode ->
         analyticsTracker.track(AnalyticsEvent.USER_FILE_DETAIL_SHOWN)
@@ -81,8 +127,14 @@ class CloudFilesFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
 
     override fun onDestroyView() {
         binding?.recyclerView?.adapter = null
+        multiSelectHelper.cleanup()
         super.onDestroyView()
         binding = null
+    }
+
+    override fun onResume() {
+        super.onResume()
+        AutomaticUpNextSource.mostRecentList = AutomaticUpNextSource.Companion.Predefined.files
     }
 
     override fun onPause() {
@@ -97,8 +149,8 @@ class CloudFilesFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
             radiusPx = 4.dpToPx(context)
         }.smallPlaceholder()
 
-        playButtonListener.source = AnalyticsSource.FILES
-        multiSelectHelper.source = AnalyticsSource.FILES
+        playButtonListener.source = SourceView.FILES
+        multiSelectHelper.source = SourceView.FILES
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -122,13 +174,23 @@ class CloudFilesFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
             it.layoutManager = LinearLayoutManager(it.context, RecyclerView.VERTICAL, false)
             it.adapter = adapter
             (it.itemAnimator as SimpleItemAnimator).changeDuration = 0
-            itemTouchHelper = EpisodeItemTouchHelper(this::episodeSwipedRightItem1, this::episodeSwipedRightItem2, this::episodeDeleteSwiped)
+            itemTouchHelper = EpisodeItemTouchHelper()
             itemTouchHelper.attachToRecyclerView(it)
         }
 
-        viewModel.cloudFilesList.observe(viewLifecycleOwner) {
-            binding?.emptyLayout?.isVisible = it.isEmpty()
-            adapter.submitList(it)
+        viewModel.uiState.observe(viewLifecycleOwner) {
+            binding?.emptyLayout?.isVisible = it.userEpisodes.isEmpty()
+            adapter.submitList(it.userEpisodes)
+            adapter.notifyDataSetChanged()
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                episodeListBookmarkViewModel.stateFlow.collect {
+                    adapter.setBookmarksAvailable(it.isBookmarkFeatureAvailable)
+                    adapter.notifyDataSetChanged()
+                }
+            }
         }
 
         binding?.layoutUsage?.isVisible = false
@@ -175,7 +237,7 @@ class CloudFilesFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
         }
         viewModel.signInState.observe(viewLifecycleOwner) {
             binding?.swipeRefreshLayout?.isEnabled =
-                it is SignInState.SignedIn && it.subscriptionStatus is SubscriptionStatus.Plus
+                it is SignInState.SignedIn && it.subscriptionStatus is SubscriptionStatus.Paid
         }
 
         binding?.fab?.setOnClickListener {
@@ -198,7 +260,7 @@ class CloudFilesFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
 
             adapter.notifyDataSetChanged()
         }
-        multiSelectHelper.listener = object : MultiSelectHelper.Listener {
+        multiSelectHelper.listener = object : MultiSelectHelper.Listener<BaseEpisode> {
             override fun multiSelectSelectAll() {
                 val episodes = viewModel.cloudFilesList.value
                 if (episodes != null) {
@@ -211,16 +273,16 @@ class CloudFilesFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
             override fun multiSelectSelectNone() {
                 val episodes = viewModel.cloudFilesList.value
                 if (episodes != null) {
-                    episodes.forEach { multiSelectHelper.deselect(it) }
+                    multiSelectHelper.deselectAllInList(episodes)
                     adapter.notifyDataSetChanged()
                     analyticsTracker.track(AnalyticsEvent.UPLOADED_FILES_SELECT_ALL_TAPPED, mapOf(SELECT_ALL_KEY to false))
                 }
             }
 
-            override fun multiSelectSelectAllUp(episode: BaseEpisode) {
+            override fun multiSelectSelectAllUp(multiSelectable: BaseEpisode) {
                 val episodes = viewModel.cloudFilesList.value
                 if (episodes != null) {
-                    val startIndex = episodes.indexOf(episode)
+                    val startIndex = episodes.indexOf(multiSelectable)
                     if (startIndex > -1) {
                         multiSelectHelper.selectAllInList(episodes.subList(0, startIndex + 1))
                     }
@@ -230,10 +292,10 @@ class CloudFilesFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
                 }
             }
 
-            override fun multiSelectSelectAllDown(episode: BaseEpisode) {
+            override fun multiSelectSelectAllDown(multiSelectable: BaseEpisode) {
                 val episodes = viewModel.cloudFilesList.value
                 if (episodes != null) {
-                    val startIndex = episodes.indexOf(episode)
+                    val startIndex = episodes.indexOf(multiSelectable)
                     if (startIndex > -1) {
                         multiSelectHelper.selectAllInList(episodes.subList(startIndex, episodes.size))
                     }
@@ -242,9 +304,33 @@ class CloudFilesFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
                     analyticsTracker.track(AnalyticsEvent.UPLOADED_FILES_SELECT_ALL_BELOW_TAPPED)
                 }
             }
+
+            override fun multiDeselectAllBelow(multiSelectable: BaseEpisode) {
+                val cloudFiles = viewModel.cloudFilesList.value
+                if (cloudFiles != null) {
+                    val startIndex = cloudFiles.indexOf(multiSelectable)
+                    if (startIndex > -1) {
+                        val episodesBelow = cloudFiles.subList(startIndex, cloudFiles.size)
+                        multiSelectHelper.deselectAllInList(episodesBelow)
+                        adapter.notifyDataSetChanged()
+                    }
+                }
+            }
+
+            override fun multiDeselectAllAbove(multiSelectable: BaseEpisode) {
+                val cloudFiles = viewModel.cloudFilesList.value
+                if (cloudFiles != null) {
+                    val startIndex = cloudFiles.indexOf(multiSelectable)
+                    if (startIndex > -1) {
+                        val episodesAbove = cloudFiles.subList(0, startIndex + 1)
+                        multiSelectHelper.deselectAllInList(episodesAbove)
+                        adapter.notifyDataSetChanged()
+                    }
+                }
+            }
         }
         multiSelectHelper.coordinatorLayout = (activity as FragmentHostListener).snackBarView()
-        multiSelectHelper.source = AnalyticsSource.FILES
+        multiSelectHelper.source = SourceView.FILES
         binding?.multiSelectToolbar?.setup(viewLifecycleOwner, multiSelectHelper, menuRes = null, fragmentManager = parentFragmentManager)
     }
 
@@ -320,36 +406,6 @@ class CloudFilesFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
                 checked = (viewModel.getSortOrder() == Settings.CloudSortOrder.A_TO_Z)
             )
         dialog.show(parentFragmentManager, "sort_options")
-    }
-
-    private fun episodeDeleteSwiped(episode: BaseEpisode, index: Int) {
-        val userEpisode = episode as? UserEpisode ?: return
-        val deleteState = viewModel.getDeleteStateOnSwipeDelete(userEpisode)
-        val confirmationDialog = CloudDeleteHelper.getDeleteDialog(userEpisode, deleteState, viewModel::deleteEpisode, resources)
-        confirmationDialog
-            .setOnDismiss {
-                val recyclerView = binding?.recyclerView
-                recyclerView?.findViewHolderForAdapterPosition(index)?.let {
-                    itemTouchHelper.clearView(recyclerView, it)
-                }
-            }
-        confirmationDialog.show(parentFragmentManager, "delete_confirm")
-    }
-
-    private fun episodeSwipedRightItem1(episode: BaseEpisode, index: Int) {
-        when (settings.getUpNextSwipeAction()) {
-            Settings.UpNextAction.PLAY_NEXT -> viewModel.episodeSwipeUpNext(episode)
-            Settings.UpNextAction.PLAY_LAST -> viewModel.episodeSwipeUpLast(episode)
-        }
-        adapter.notifyItemChanged(index)
-    }
-
-    private fun episodeSwipedRightItem2(episode: BaseEpisode, index: Int) {
-        when (settings.getUpNextSwipeAction()) {
-            Settings.UpNextAction.PLAY_NEXT -> viewModel.episodeSwipeUpLast(episode)
-            Settings.UpNextAction.PLAY_LAST -> viewModel.episodeSwipeUpNext(episode)
-        }
-        adapter.notifyItemChanged(index)
     }
 
     override fun onBackPressed(): Boolean {

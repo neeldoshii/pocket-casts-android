@@ -13,35 +13,45 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import androidx.activity.result.ActivityResultLauncher
 import androidx.core.view.GestureDetectorCompat
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.to.Chapter
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeStatusEnum
 import au.com.shiftyjelly.pocketcasts.player.R
 import au.com.shiftyjelly.pocketcasts.player.databinding.AdapterPlayerHeaderBinding
 import au.com.shiftyjelly.pocketcasts.player.view.ShelfFragment.Companion.AnalyticsProp
+import au.com.shiftyjelly.pocketcasts.player.view.bookmark.BookmarkActivityContract
 import au.com.shiftyjelly.pocketcasts.player.view.video.VideoActivity
 import au.com.shiftyjelly.pocketcasts.player.viewmodel.PlayerViewModel
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.repositories.chromecast.CastManager
 import au.com.shiftyjelly.pocketcasts.repositories.images.into
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
+import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingFlow
+import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingLauncher
+import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingUpgradeSource
 import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
 import au.com.shiftyjelly.pocketcasts.ui.images.PodcastImageLoaderThemed
 import au.com.shiftyjelly.pocketcasts.ui.images.ThemedImageTintTransformation
+import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
 import au.com.shiftyjelly.pocketcasts.utils.extensions.dpToPx
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureTier
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import au.com.shiftyjelly.pocketcasts.views.extensions.updateColor
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
 import au.com.shiftyjelly.pocketcasts.views.helper.UiUtil
 import au.com.shiftyjelly.pocketcasts.views.helper.WarningsHelper
 import coil.load
+import coil.request.Disposable
+import coil.request.ErrorResult
 import coil.request.ImageRequest
 import coil.size.Size
 import coil.transform.RoundedCornersTransformation
@@ -51,6 +61,7 @@ import com.airbnb.lottie.SimpleColorFilter
 import com.airbnb.lottie.model.KeyPath
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -79,7 +90,11 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
     private var binding: AdapterPlayerHeaderBinding? = null
     private var skippedFirstTouch: Boolean = false
     private var hasReceivedOnTouchDown = false
-    private val playbackSource = AnalyticsSource.PLAYER
+    private val sourceView = SourceView.PLAYER
+
+    private val activityLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(BookmarkActivityContract()) { result ->
+        showViewBookmarksSnackbar(result)
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = AdapterPlayerHeaderBinding.inflate(inflater, container, false)
@@ -121,7 +136,7 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
         binding.seekBar.changeListener = object : PlayerSeekBar.OnUserSeekListener {
             override fun onSeekPositionChangeStop(progress: Int, seekComplete: () -> Unit) {
                 viewModel.seekToMs(progress, seekComplete)
-                playbackManager.trackPlaybackSeek(progress, AnalyticsSource.PLAYER)
+                playbackManager.trackPlaybackSeek(progress, SourceView.PLAYER)
             }
 
             override fun onSeekPositionChanging(progress: Int) {}
@@ -139,7 +154,8 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
             ShelfItem.Cast.id to binding.cast,
             ShelfItem.Played.id to binding.played,
             ShelfItem.Archive.id to binding.archive,
-            ShelfItem.Download.id to binding.download
+            ShelfItem.Download.id to binding.download,
+            ShelfItem.Bookmark.id to binding.bookmark,
         )
         viewModel.trimmedShelfLive.observe(viewLifecycleOwner) {
             val visibleItems = it.first.subList(0, 4).map { it.id }
@@ -170,6 +186,10 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
         binding.download.setOnClickListener {
             trackShelfAction(ShelfItem.Download.analyticsValue)
             viewModel.downloadCurrentlyPlaying()
+        }
+        binding.bookmark.setOnClickListener {
+            trackShelfAction(ShelfItem.Bookmark.analyticsValue)
+            onAddBookmarkClick()
         }
         binding.videoView.playbackManager = playbackManager
         binding.videoView.setOnClickListener { onFullScreenVideoClick() }
@@ -205,7 +225,15 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
             if (headerViewModel.embeddedArtwork == PlayerViewModel.Artwork.None && headerViewModel.podcastUuid != null) {
                 loadArtwork(headerViewModel.podcastUuid, binding.artwork)
             } else {
-                loadEpisodeArtwork(headerViewModel.embeddedArtwork, binding.artwork)
+                loadEpisodeArtwork(headerViewModel.embeddedArtwork, binding.artwork)?.let { disposable ->
+                    launch {
+                        // If episode artwork fails to load, then load podcast artwork
+                        val result = disposable.job.await()
+                        if (result is ErrorResult && headerViewModel.podcastUuid != null) {
+                            loadArtwork(headerViewModel.podcastUuid, binding.artwork)
+                        }
+                    }
+                }
             }
 
             loadChapterArtwork(headerViewModel.chapter, binding.chapterArtwork)
@@ -270,6 +298,8 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
             }
 
             binding.archive.setImageResource(if (headerViewModel.isUserEpisode) R.drawable.ic_delete_32 else R.drawable.ic_archive_32)
+            binding.chapterProgressCircle.progress = headerViewModel.chapterProgress
+            binding.chapterTimeRemaining.text = headerViewModel.chapterTimeRemaining
 
             binding.executePendingBindings()
         }
@@ -283,7 +313,7 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
 
                 override fun onDown(e: MotionEvent) = true
 
-                override fun onScroll(e1: MotionEvent, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+                override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
                     val upNextBottomSheetBehavior = (parentFragment as? PlayerContainerFragment)?.upNextBottomSheetBehavior
                         ?: return false
                     if (!skippedFirstTouch) {
@@ -393,8 +423,14 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
     }
 
     private var lastLoadedEmbedded: PlayerViewModel.Artwork? = null
-    private fun loadEpisodeArtwork(embeddedArtwork: PlayerViewModel.Artwork, imageView: ImageView) {
-        if (embeddedArtwork == PlayerViewModel.Artwork.None || lastLoadedEmbedded == embeddedArtwork) return
+    private fun loadEpisodeArtwork(
+        embeddedArtwork: PlayerViewModel.Artwork,
+        imageView: ImageView,
+    ): Disposable? {
+
+        if (embeddedArtwork == PlayerViewModel.Artwork.None || lastLoadedEmbedded == embeddedArtwork) return null
+
+        var disposable: Disposable? = null
 
         if (embeddedArtwork is PlayerViewModel.Artwork.Url || embeddedArtwork is PlayerViewModel.Artwork.Path) {
             imageView.imageTintList = null
@@ -406,14 +442,15 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
             }
 
             if (embeddedArtwork is PlayerViewModel.Artwork.Path) {
-                imageView.load(data = File(embeddedArtwork.path), builder = imageBuilder)
+                disposable = imageView.load(data = File(embeddedArtwork.path), builder = imageBuilder)
             } else if (embeddedArtwork is PlayerViewModel.Artwork.Url) {
-                imageView.load(data = embeddedArtwork.url, builder = imageBuilder)
+                disposable = imageView.load(data = embeddedArtwork.url, builder = imageBuilder)
             }
 
             lastLoadedEmbedded = embeddedArtwork
             lastLoadedUuid = null
         }
+        return disposable
     }
 
     private fun loadChapterArtwork(chapter: Chapter?, imageView: ImageView) {
@@ -459,6 +496,26 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
         viewModel.starToggle()
     }
 
+    fun onAddBookmarkClick() {
+        if (Feature.isUserEntitled(Feature.BOOKMARKS_ENABLED, settings.userTier)) {
+            viewModel.buildBookmarkArguments { arguments ->
+                activityLauncher.launch(arguments.getIntent(requireContext()))
+            }
+        } else {
+            startUpsellFlow()
+        }
+    }
+
+    private fun startUpsellFlow() {
+        val source = OnboardingUpgradeSource.HEADPHONE_CONTROLS_SETTINGS
+        val onboardingFlow = OnboardingFlow.Upsell(
+            source = source,
+            showPatronOnly = Feature.BOOKMARKS_ENABLED.tier == FeatureTier.Patron ||
+                Feature.BOOKMARKS_ENABLED.isCurrentlyExclusiveToPatron(),
+        )
+        OnboardingLauncher.openOnboardingFlow(activity, onboardingFlow)
+    }
+
     override fun onShareClick() {
         trackShelfAction(ShelfItem.Share.analyticsValue)
         ShareFragment().show(parentFragmentManager, "share_sheet")
@@ -485,19 +542,19 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
         viewModel.nextChapter()
     }
 
-    fun onMoreClicked() {
+    fun onMoreClicked(sourceView: SourceView? = null) {
         // stop double taps
         if (childFragmentManager.fragments.firstOrNull() is ShelfBottomSheet) {
             return
         }
         analyticsTracker.track(AnalyticsEvent.PLAYER_SHELF_OVERFLOW_MENU_SHOWN)
-        ShelfBottomSheet().show(childFragmentManager, "shelf_bottom_sheet")
+        ShelfBottomSheet.newInstance(sourceView).show(childFragmentManager, "shelf_bottom_sheet")
     }
 
     override fun onPlayClicked() {
         if (playbackManager.isPlaying()) {
             LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Pause clicked in player")
-            playbackManager.pause(playbackSource = playbackSource)
+            playbackManager.pause(sourceView = sourceView)
         } else {
             if (playbackManager.shouldWarnAboutPlayback()) {
                 launch {
@@ -508,7 +565,7 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
                                 viewModel.play()
                                 warningsHelper.showBatteryWarningSnackbarIfAppropriate(snackbarParentView = view)
                             } else {
-                                warningsHelper.streamingWarningDialog(episode = episode, snackbarParentView = view, playbackSource = playbackSource)
+                                warningsHelper.streamingWarningDialog(episode = episode, snackbarParentView = view, sourceView = sourceView)
                                     .show(parentFragmentManager, "streaming dialog")
                             }
                         }
@@ -552,5 +609,28 @@ class PlayerHeaderFragment : BaseFragment(), PlayerClickListener {
             AnalyticsEvent.PLAYER_SHELF_ACTION_TAPPED,
             mapOf(AnalyticsProp.Key.FROM to AnalyticsProp.Value.SHELF, AnalyticsProp.Key.ACTION to analyticsAction)
         )
+    }
+
+    private fun showViewBookmarksSnackbar(result: BookmarkActivityContract.BookmarkResult?) {
+        val view = view
+        if (result == null || view == null) {
+            return
+        }
+
+        val snackbarMessage = if (result.isExistingBookmark) {
+            getString(LR.string.bookmark_updated, result.title)
+        } else {
+            getString(LR.string.bookmark_added, result.title)
+        }
+        val viewBookmarksAction = View.OnClickListener {
+            (parentFragment as? PlayerContainerFragment)?.openBookmarks()
+        }
+
+        Snackbar.make(view, snackbarMessage, Snackbar.LENGTH_LONG)
+            .setAction(LR.string.settings_view, viewBookmarksAction)
+            .setActionTextColor(result.tintColor)
+            .setBackgroundTint(ThemeColor.primaryUi01(Theme.ThemeType.DARK))
+            .setTextColor(ThemeColor.primaryText01(Theme.ThemeType.DARK))
+            .show()
     }
 }

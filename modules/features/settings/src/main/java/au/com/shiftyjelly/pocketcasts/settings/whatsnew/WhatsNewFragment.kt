@@ -4,104 +4,130 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.isVisible
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
-import androidx.viewpager2.adapter.FragmentStateAdapter
-import androidx.viewpager2.widget.ViewPager2
-import au.com.shiftyjelly.pocketcasts.settings.databinding.FragmentWhatsnewBinding
-import au.com.shiftyjelly.pocketcasts.views.extensions.updateColors
+import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
+import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
+import au.com.shiftyjelly.pocketcasts.compose.AppTheme
+import au.com.shiftyjelly.pocketcasts.compose.CallOnce
+import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.settings.HeadphoneControlsSettingsFragment
+import au.com.shiftyjelly.pocketcasts.settings.PlaybackSettingsFragment
+import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingFlow
+import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingLauncher
+import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingUpgradeSource
+import au.com.shiftyjelly.pocketcasts.settings.whatsnew.WhatsNewViewModel.NavigationState
+import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureTier
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
-import au.com.shiftyjelly.pocketcasts.views.helper.NavigationIcon.Close
-import au.com.shiftyjelly.pocketcasts.views.helper.ToolbarColors
-import au.com.shiftyjelly.pocketcasts.views.helper.WhatsNew
-import au.com.shiftyjelly.pocketcasts.views.helper.WhatsNewPage
 import dagger.hilt.android.AndroidEntryPoint
-import au.com.shiftyjelly.pocketcasts.localization.R as LR
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class WhatsNewFragment : BaseFragment() {
 
-    private var binding: FragmentWhatsnewBinding? = null
+    @Inject
+    lateinit var analyticsTracker: AnalyticsTrackerWrapper
 
-    private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
-        override fun onPageSelected(position: Int) {
-            val binding = binding ?: return
-            binding.pageIndicatorView.position = position
-            binding.btnNext.text = getString(if (position < WhatsNew.pages.count() - 1) LR.string.settings_whats_new_next else LR.string.settings_whats_new_done)
-        }
-    }
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View =
+        ComposeView(requireContext()).apply {
+            setBackgroundColor(Color.Transparent.toArgb())
+            setContent {
+                AppTheme(theme.activeTheme) {
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        binding = FragmentWhatsnewBinding.inflate(inflater, container, false)
-        return binding?.root
-    }
+                    CallOnce {
+                        analyticsTracker.track(
+                            AnalyticsEvent.WHATSNEW_SHOWN,
+                            mapOf("version" to Settings.WHATS_NEW_VERSION_CODE)
+                        )
+                    }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-        binding?.mainViewPager?.unregisterOnPageChangeCallback(pageChangeCallback)
-        binding = null
-    }
+                    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+                    val onClose: () -> Unit = {
+                        @Suppress("DEPRECATION")
+                        activity?.onBackPressed()
+                    }
+                    var confirmActionClicked: Boolean by remember { mutableStateOf(false) }
+                    WhatsNewPage(
+                        onConfirm = {
+                            analyticsTracker.track(
+                                AnalyticsEvent.WHATSNEW_CONFIRM_BUTTON_TAPPED,
+                                mapOf("version" to Settings.WHATS_NEW_VERSION_CODE)
+                            )
+                            onClose()
+                            performConfirmAction(it)
+                            confirmActionClicked = true
+                        },
+                        onClose = {
+                            analyticsTracker.track(
+                                AnalyticsEvent.WHATSNEW_DISMISSED,
+                                mapOf("version" to Settings.WHATS_NEW_VERSION_CODE)
+                            )
+                            onClose()
+                        },
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
+                    )
 
-        val binding = binding ?: return
-
-        binding.toolbar.let { toolbar ->
-            toolbar.title = getString(LR.string.settings_whats_new)
-
-            val colors = ToolbarColors.Theme(theme = theme, context = view.context)
-            binding.toolbar.updateColors(toolbarColors = colors, navigationIcon = Close)
-            updateStatusBarColor(color = colors.backgroundColor)
-
-            toolbar.setNavigationOnClickListener {
-                close()
-            }
-            (activity as AppCompatActivity).setSupportActionBar(toolbar)
-        }
-
-        val fragmentAdapter = WhatsNewFragmentPagerAdapter(this)
-        binding.mainViewPager.adapter = fragmentAdapter
-
-        val pages = WhatsNew.pages
-        binding.pageIndicatorView.count = pages.size
-        binding.pageIndicatorView.isVisible = pages.size > 1
-
-        binding.btnNext.text = getString(if (pages.count() > 1) LR.string.settings_whats_new_next else LR.string.settings_whats_new_done)
-        (binding.mainViewPager.adapter as? WhatsNewFragmentPagerAdapter)?.updateItems(pages)
-
-        binding.mainViewPager.registerOnPageChangeCallback(pageChangeCallback)
-
-        binding.btnNext.setOnClickListener {
-            if (binding.mainViewPager.currentItem == pages.size - 1) {
-                close()
-            } else {
-                binding.mainViewPager.setCurrentItem(binding.mainViewPager.currentItem + 1, true)
+                    DisposableEffect(Unit) {
+                        onDispose {
+                            val fragmentHostListener = activity as? FragmentHostListener
+                                ?: throw IllegalStateException(FRAGMENT_HOST_LISTENER_NOT_IMPLEMENTED)
+                            fragmentHostListener.whatsNewDismissed(fromConfirmAction = confirmActionClicked)
+                        }
+                    }
+                }
             }
         }
+
+    private fun performConfirmAction(navigationState: NavigationState) {
+        when (navigationState) {
+            NavigationState.PlaybackSettings -> openFragment(PlaybackSettingsFragment.newInstance(scrollToAutoPlay = true))
+            NavigationState.HeadphoneControlsSettings -> openFragment(HeadphoneControlsSettingsFragment())
+            NavigationState.FullScreenPlayerScreen -> openPlayer()
+            NavigationState.StartUpsellFlow -> startUpsellFlow()
+        }
     }
 
-    private fun close() {
-        @Suppress("DEPRECATION")
-        activity?.onBackPressed()
-    }
-}
-
-class WhatsNewFragmentPagerAdapter(fragment: Fragment) : FragmentStateAdapter(fragment) {
-
-    private var whatsNewPages = listOf<WhatsNewPage>()
-
-    fun updateItems(newList: List<WhatsNewPage>) {
-        whatsNewPages = newList
-        notifyDataSetChanged()
+    private fun openFragment(fragment: Fragment) {
+        val fragmentHostListener = activity as? FragmentHostListener
+            ?: throw IllegalStateException(FRAGMENT_HOST_LISTENER_NOT_IMPLEMENTED)
+        fragmentHostListener.addFragment(fragment)
     }
 
-    override fun createFragment(position: Int): Fragment {
-        return WhatsNewPageFragment.newInstance(position)
+    private fun openPlayer() {
+        val fragmentHostListener = activity as? FragmentHostListener
+            ?: throw IllegalStateException(FRAGMENT_HOST_LISTENER_NOT_IMPLEMENTED)
+        fragmentHostListener.openPlayer(SourceView.WHATS_NEW.analyticsValue)
     }
 
-    override fun getItemCount(): Int {
-        return whatsNewPages.count()
+    private fun startUpsellFlow() {
+        val source = OnboardingUpgradeSource.BOOKMARKS
+        val onboardingFlow = OnboardingFlow.Upsell(
+            source = source,
+            showPatronOnly = Feature.BOOKMARKS_ENABLED.tier == FeatureTier.Patron ||
+                Feature.BOOKMARKS_ENABLED.isCurrentlyExclusiveToPatron()
+        )
+        OnboardingLauncher.openOnboardingFlow(activity, onboardingFlow)
+    }
+
+    companion object {
+        private const val FRAGMENT_HOST_LISTENER_NOT_IMPLEMENTED = "Activity must implement FragmentHostListener"
+        fun isWhatsNewNewerThan(versionCode: Int?): Boolean {
+            return Settings.WHATS_NEW_VERSION_CODE > (versionCode ?: 0)
+        }
     }
 }

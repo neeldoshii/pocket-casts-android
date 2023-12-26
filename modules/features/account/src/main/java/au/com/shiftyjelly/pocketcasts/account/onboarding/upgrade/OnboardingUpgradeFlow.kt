@@ -17,7 +17,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import au.com.shiftyjelly.pocketcasts.account.BuildConfig
 import au.com.shiftyjelly.pocketcasts.account.onboarding.upgrade.OnboardingUpgradeHelper.OutlinedRowButton
 import au.com.shiftyjelly.pocketcasts.account.onboarding.upgrade.OnboardingUpgradeHelper.UnselectedOutlinedRowButton
 import au.com.shiftyjelly.pocketcasts.account.viewmodel.OnboardingUpgradeBottomSheetState
@@ -27,6 +26,8 @@ import au.com.shiftyjelly.pocketcasts.models.type.Subscription
 import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingFlow
 import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingUpgradeSource
 import au.com.shiftyjelly.pocketcasts.utils.extensions.getActivity
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import kotlinx.coroutines.launch
 
@@ -50,10 +51,10 @@ fun OnboardingUpgradeFlow(
     val coroutineScope = rememberCoroutineScope()
     val activity = LocalContext.current.getActivity()
 
-    val userSignedInOrSignedUpInUpsellFlow = flow is OnboardingFlow.PlusUpsell &&
+    val userSignedInOrSignedUpInUpsellFlow = flow is OnboardingFlow.Upsell &&
         (source == OnboardingUpgradeSource.RECOMMENDATIONS || source == OnboardingUpgradeSource.LOGIN)
 
-    if (BuildConfig.ADD_PATRON_ENABLED && userSignedInOrSignedUpInUpsellFlow) {
+    if (FeatureFlag.isEnabled(Feature.ADD_PATRON_ENABLED) && userSignedInOrSignedUpInUpsellFlow) {
         activity?.let {
             LaunchedEffect(Unit) {
                 mainSheetViewModel.onClickSubscribe(
@@ -68,9 +69,9 @@ fun OnboardingUpgradeFlow(
     val startInExpandedState =
         // Only start with expanded state if there are any subscriptions
         hasSubscriptions && (
-            // The hidden state is shown as the first screen in the PlusUpsell flow, so when we return
+            // The hidden state is shown as the first screen in the Upsell flow, so when we return
             // to this screen after login/signup we want to immediately expand the purchase bottom sheet.
-            (!BuildConfig.ADD_PATRON_ENABLED && userSignedInOrSignedUpInUpsellFlow) ||
+            (!FeatureFlag.isEnabled(Feature.ADD_PATRON_ENABLED) && userSignedInOrSignedUpInUpsellFlow) ||
                 // User already indicated they want to upgrade, so go straight to purchase modal
                 flow is OnboardingFlow.PlusAccountUpgradeNeedsLogin ||
                 flow is OnboardingFlow.PlusAccountUpgrade

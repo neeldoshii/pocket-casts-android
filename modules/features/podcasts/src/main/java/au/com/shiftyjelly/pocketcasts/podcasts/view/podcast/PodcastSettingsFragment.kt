@@ -2,10 +2,10 @@ package au.com.shiftyjelly.pocketcasts.podcasts.view.podcast
 
 import android.os.Bundle
 import android.view.View
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.os.bundleOf
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
@@ -19,7 +19,7 @@ import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeStatusEnum
 import au.com.shiftyjelly.pocketcasts.podcasts.R
 import au.com.shiftyjelly.pocketcasts.podcasts.viewmodel.PodcastSettingsViewModel
-import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.preferences.model.AutoAddUpNextLimitBehaviour
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.PodcastManager
 import au.com.shiftyjelly.pocketcasts.settings.AutoAddSettingsFragment
 import au.com.shiftyjelly.pocketcasts.ui.extensions.getThemeColor
@@ -30,7 +30,7 @@ import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.utils.combineLatest
 import au.com.shiftyjelly.pocketcasts.views.dialog.ConfirmationDialog
 import au.com.shiftyjelly.pocketcasts.views.extensions.setInputAsSeconds
-import au.com.shiftyjelly.pocketcasts.views.extensions.updateColors
+import au.com.shiftyjelly.pocketcasts.views.extensions.setup
 import au.com.shiftyjelly.pocketcasts.views.fragments.BasePreferenceFragment
 import au.com.shiftyjelly.pocketcasts.views.fragments.FilterSelectFragment
 import au.com.shiftyjelly.pocketcasts.views.helper.HasBackstack
@@ -38,20 +38,18 @@ import au.com.shiftyjelly.pocketcasts.views.helper.NavigationIcon.BackArrow
 import au.com.shiftyjelly.pocketcasts.views.helper.ToolbarColors
 import au.com.shiftyjelly.pocketcasts.views.helper.UiUtil
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import javax.inject.Inject
-import kotlin.coroutines.CoroutineContext
 import au.com.shiftyjelly.pocketcasts.images.R as IR
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
 import au.com.shiftyjelly.pocketcasts.settings.R as SR
 import au.com.shiftyjelly.pocketcasts.ui.R as UR
 
 @AndroidEntryPoint
-class PodcastSettingsFragment : BasePreferenceFragment(), CoroutineScope, FilterSelectFragment.Listener, HasBackstack {
+class PodcastSettingsFragment : BasePreferenceFragment(), FilterSelectFragment.Listener, HasBackstack {
     @Inject lateinit var theme: Theme
     @Inject lateinit var podcastManager: PodcastManager
     @Inject lateinit var analyticsTracker: AnalyticsTrackerWrapper
@@ -71,9 +69,6 @@ class PodcastSettingsFragment : BasePreferenceFragment(), CoroutineScope, Filter
 
     private val viewModel: PodcastSettingsViewModel by viewModels()
     private var toolbar: Toolbar? = null
-
-    override val coroutineContext: CoroutineContext
-        get() = Dispatchers.Main
 
     val podcastUuid
         get() = arguments?.getString(ARG_PODCAST_UUID)!!
@@ -118,6 +113,18 @@ class PodcastSettingsFragment : BasePreferenceFragment(), CoroutineScope, Filter
     }
 
     override fun onDestroyView() {
+        preferenceFeedIssueDetected = null
+        preferenceNotifications = null
+        preferenceAutoDownload = null
+        preferenceAddToUpNext = null
+        preferenceAddToUpNextOrder = null
+        preferenceAddToUpNextGlobal = null
+        preferencePlaybackEffects = null
+        preferenceSkipFirst = null
+        preferenceAutoArchive = null
+        preferenceFilters = null
+        preferenceUnsubscribe = null
+        preferenceSkipLast = null
         toolbar = null
         super.onDestroyView()
     }
@@ -129,15 +136,12 @@ class PodcastSettingsFragment : BasePreferenceFragment(), CoroutineScope, Filter
         view.setBackgroundColor(view.context.getThemeColor(UR.attr.primary_ui_01))
         view.isClickable = true
 
-        val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
-        this.toolbar = toolbar
-        toolbar.title = getString(LR.string.podcast_settings)
-        (activity as AppCompatActivity).setSupportActionBar(toolbar)
+        toolbar = view.findViewById<Toolbar>(R.id.toolbar)
 
         preferenceAddToUpNextOrder?.isVisible = false
 
         viewModel.podcast.observe(viewLifecycleOwner) { podcast ->
-            val context = toolbar.context
+            val context = context ?: return@observe
 
             val colors = ToolbarColors.Podcast(podcast = podcast, theme = theme)
 
@@ -148,14 +152,13 @@ class PodcastSettingsFragment : BasePreferenceFragment(), CoroutineScope, Filter
             preferencePlaybackEffects?.icon = context.getTintedDrawable(effectsDrawableId, colors.iconColor)
             preferencePlaybackEffects?.summary = buildEffectsSummary(podcast)
 
-            toolbar.title = podcast.title
-
             updateTintColor(colors.iconColor)
-            toolbar.updateColors(toolbarColors = colors, navigationIcon = BackArrow)
+            toolbar?.setup(title = podcast.title, navigationIcon = BackArrow, toolbarColors = colors, theme = theme, activity = activity)
+
             theme.updateWindowStatusBar(
                 window = requireActivity().window,
                 statusBarColor = StatusBarColor.Custom(colors.backgroundColor, isWhiteIcons = theme.activeTheme.defaultLightIcons),
-                context = requireContext()
+                context = context
             )
 
             preferenceNotifications?.isChecked = podcast.isShowNotifications
@@ -189,8 +192,8 @@ class PodcastSettingsFragment : BasePreferenceFragment(), CoroutineScope, Filter
 
         viewModel.globalSettings.observe(viewLifecycleOwner) {
             val summary = when (it.second) {
-                Settings.AutoAddUpNextLimitBehaviour.ONLY_ADD_TO_TOP, null -> getString(LR.string.settings_auto_up_next_limit_reached_top_summary, it.first)
-                Settings.AutoAddUpNextLimitBehaviour.STOP_ADDING -> getString(LR.string.settings_auto_up_next_limit_reached_stop_summary, it.first)
+                AutoAddUpNextLimitBehaviour.ONLY_ADD_TO_TOP -> getString(LR.string.settings_auto_up_next_limit_reached_top_summary, it.first)
+                AutoAddUpNextLimitBehaviour.STOP_ADDING -> getString(LR.string.settings_auto_up_next_limit_reached_stop_summary, it.first)
             }
 
             preferenceAddToUpNextGlobal?.summary = getString(LR.string.podcast_settings_up_next_episode_limit, it.first) + "\n\n" + summary
@@ -216,7 +219,7 @@ class PodcastSettingsFragment : BasePreferenceFragment(), CoroutineScope, Filter
                 .setSummary(getString(LR.string.podcast_feed_issue_dialog_summary))
                 .setIconId(IR.drawable.ic_failedwarning)
                 .setOnConfirm {
-                    launch {
+                    lifecycleScope.launch {
                         analyticsTracker.track(AnalyticsEvent.PODCAST_SETTINGS_FEED_ERROR_UPDATE_TAPPED)
                         podcastManager.updateRefreshAvailable(podcastUuid = podcastUuid, refreshAvailable = false)
                         val success = podcastManager.refreshPodcastFeed(podcastUuid = podcastUuid)
@@ -354,7 +357,7 @@ class PodcastSettingsFragment : BasePreferenceFragment(), CoroutineScope, Filter
 
     private fun setupUnsubscribe() {
         preferenceUnsubscribe?.setOnPreferenceClickListener {
-            launch {
+            lifecycleScope.launch {
                 val resources = context?.resources ?: return@launch
                 val downloaded = withContext(Dispatchers.Default) { podcastManager.countEpisodesInPodcastWithStatus(podcastUuid, EpisodeStatusEnum.DOWNLOADED) }
                 val title = when (downloaded) {

@@ -3,8 +3,8 @@ package au.com.shiftyjelly.pocketcasts.search
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.toLiveData
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.to.FolderItem
 import au.com.shiftyjelly.pocketcasts.models.to.SignInState
@@ -36,7 +36,7 @@ class SearchHandler @Inject constructor(
     private val analyticsTracker: AnalyticsTrackerWrapper,
     folderManager: FolderManager
 ) {
-    private var source: AnalyticsSource = AnalyticsSource.UNKNOWN
+    private var source: SourceView = SourceView.UNKNOWN
     private val searchQuery = BehaviorRelay.create<Query>().apply {
         accept(Query(""))
     }
@@ -47,7 +47,7 @@ class SearchHandler @Inject constructor(
     private val onlySearchRemoteObservable = BehaviorRelay.create<Boolean>().apply {
         accept(false)
     }
-    private val signInStateObservable = userManager.getSignInState().startWith(SignInState.SignedOut()).toObservable()
+    private val signInStateObservable = userManager.getSignInState().startWith(SignInState.SignedOut).toObservable()
 
     private val localPodcastsResults = Observable
         .combineLatest(searchQuery, onlySearchRemoteObservable, signInStateObservable) { searchQuery, onlySearchRemoteObservable, signInState ->
@@ -60,7 +60,7 @@ class SearchHandler @Inject constructor(
             } else {
                 // search folders
                 val folderSearch =
-                    if (signInState.isSignedInAsPlus) {
+                    if (signInState.isSignedInAsPlusOrPatron) {
                         // only show folders if the user has Plus
                         folderManager.findFoldersSingle()
                             .subscribeOn(Schedulers.io())
@@ -130,7 +130,7 @@ class SearchHandler @Inject constructor(
                     }
                     .toObservable()
 
-                if (settings.isFeatureFlagSearchImprovementsEnabled() && !it.startsWith("http")) {
+                if (!it.startsWith("http")) {
                     val episodesServerSearch = cacheServerManager
                         .searchEpisodes(it)
                         .map { episodeSearch ->
@@ -211,7 +211,7 @@ class SearchHandler @Inject constructor(
         onlySearchRemoteObservable.accept(remote)
     }
 
-    fun setSource(source: AnalyticsSource) {
+    fun setSource(source: SourceView) {
         this.source = source
     }
 
@@ -219,6 +219,6 @@ class SearchHandler @Inject constructor(
 
     private object AnalyticsProp {
         private const val SOURCE = "source"
-        fun sourceMap(source: AnalyticsSource) = mapOf(SOURCE to source.analyticsValue)
+        fun sourceMap(source: SourceView) = mapOf(SOURCE to source.analyticsValue)
     }
 }

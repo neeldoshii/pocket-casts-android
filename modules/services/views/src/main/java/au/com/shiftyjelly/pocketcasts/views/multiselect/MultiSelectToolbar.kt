@@ -11,12 +11,13 @@ import androidx.core.graphics.drawable.DrawableCompat
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.LifecycleOwner
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.ui.extensions.getThemeColor
 import au.com.shiftyjelly.pocketcasts.views.R
 import au.com.shiftyjelly.pocketcasts.views.extensions.tintIcons
 import dagger.hilt.android.AndroidEntryPoint
+import io.sentry.Sentry
 import javax.inject.Inject
 import au.com.shiftyjelly.pocketcasts.images.R as IR
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
@@ -29,43 +30,50 @@ class MultiSelectToolbar @JvmOverloads constructor(
     defStyleAttr: Int = androidx.appcompat.R.attr.toolbarStyle
 ) : Toolbar(context, attrs, defStyleAttr) {
 
-    companion object {
-        const val MAX_ICONS = 4
-    }
-
     private var overflowItems: List<MultiSelectAction> = emptyList()
-    private var fragmentManager: FragmentManager? = null
-    private var multiSelectHelper: MultiSelectHelper? = null
     @Inject lateinit var analyticsTracker: AnalyticsTrackerWrapper
 
-    fun setup(
+    fun <T> setup(
         lifecycleOwner: LifecycleOwner,
-        multiSelectHelper: MultiSelectHelper,
+        multiSelectHelper: MultiSelectHelper<T>,
         @MenuRes menuRes: Int?,
         fragmentManager: FragmentManager
     ) {
-
-        this.fragmentManager = fragmentManager
-        this.multiSelectHelper = multiSelectHelper
-
         setBackgroundColor(context.getThemeColor(UR.attr.support_01))
         if (menuRes != null) {
             inflateMenu(menuRes)
         } else {
+            multiSelectHelper.toolbarActions.removeObservers(lifecycleOwner)
             multiSelectHelper.toolbarActions.observe(lifecycleOwner) {
+
+                Sentry.addBreadcrumb("MultiSelectToolbar setup observed toolbarActionChange,$it from ${multiSelectHelper.source}")
+
                 menu.clear()
 
-                it.subList(0, MAX_ICONS).forEachIndexed { _, action ->
+                val maxIcons = multiSelectHelper.maxToolbarIcons
+                it.subList(0, maxIcons).forEachIndexed { _, action ->
                     val item = menu.add(Menu.NONE, action.actionId, 0, action.title)
                     item.setIcon(action.iconRes)
                     item.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+                    item.isVisible = action.isVisible
                 }
 
-                overflowItems = it.subList(MAX_ICONS, it.size)
+                overflowItems = it.subList(maxIcons, it.size)
 
-                val overflow = menu.add(Menu.NONE, R.id.menu_overflow, 0, context.getString(LR.string.more_options))
-                overflow.setIcon(IR.drawable.ic_more_vert_black_24dp)
-                overflow.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+                when (multiSelectHelper) {
+                    is MultiSelectBookmarksHelper -> {
+                        overflowItems.forEachIndexed { _, action ->
+                            val item = menu.add(Menu.NONE, action.actionId, 0, action.title)
+                            item.setIcon(action.iconRes)
+                            item.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+                        }
+                    }
+                    is MultiSelectEpisodesHelper -> {
+                        val overflow = menu.add(Menu.NONE, R.id.menu_overflow, 0, context.getString(LR.string.more_options))
+                        overflow.setIcon(IR.drawable.ic_more_vert_black_24dp)
+                        overflow.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+                    }
+                }
 
                 menu.tintIcons(context.getThemeColor(UR.attr.primary_interactive_02))
             }
@@ -81,8 +89,13 @@ class MultiSelectToolbar @JvmOverloads constructor(
 
         setOnMenuItemClickListener {
             if (it.itemId == R.id.menu_overflow) {
-                analyticsTracker.track(AnalyticsEvent.MULTI_SELECT_VIEW_OVERFLOW_MENU_SHOWN, AnalyticsProp.sourceMap(multiSelectHelper.source))
-                showOverflowBottomSheet()
+                if (multiSelectHelper is MultiSelectEpisodesHelper) {
+                    analyticsTracker.track(
+                        AnalyticsEvent.MULTI_SELECT_VIEW_OVERFLOW_MENU_SHOWN,
+                        AnalyticsProp.sourceMap(multiSelectHelper.source)
+                    )
+                    showOverflowBottomSheet(fragmentManager, multiSelectHelper)
+                }
                 true
             } else {
                 multiSelectHelper.onMenuItemSelected(itemId = it.itemId, resources = resources, fragmentManager = fragmentManager)
@@ -99,8 +112,11 @@ class MultiSelectToolbar @JvmOverloads constructor(
         navigationContentDescription = context.getString(LR.string.back)
     }
 
-    fun showOverflowBottomSheet() {
-        val fragmentManager = fragmentManager ?: return
+    private fun showOverflowBottomSheet(
+        fragmentManager: FragmentManager?,
+        multiSelectHelper: MultiSelectEpisodesHelper
+    ) {
+        if (fragmentManager == null) return
         val overflowSheet = MultiSelectBottomSheet.newInstance(overflowItems.map { it.actionId })
         overflowSheet.multiSelectHelper = multiSelectHelper
         overflowSheet.show(fragmentManager, "multiselectbottomsheet")
@@ -120,7 +136,7 @@ class MultiSelectToolbar @JvmOverloads constructor(
     private object AnalyticsProp {
         private const val source = "source"
 
-        fun sourceMap(eventSource: AnalyticsSource) =
+        fun sourceMap(eventSource: SourceView) =
             mapOf(source to eventSource.analyticsValue)
     }
 }

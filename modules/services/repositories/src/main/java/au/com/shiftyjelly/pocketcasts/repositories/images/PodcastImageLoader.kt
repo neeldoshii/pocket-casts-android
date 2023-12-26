@@ -11,10 +11,14 @@ import au.com.shiftyjelly.pocketcasts.models.entity.UserEpisode
 import au.com.shiftyjelly.pocketcasts.repositories.extensions.getUrlForArtwork
 import coil.imageLoader
 import coil.request.CachePolicy
+import coil.request.ErrorResult
 import coil.request.ImageRequest
+import coil.request.SuccessResult
 import coil.size.Size
 import coil.transform.RoundedCornersTransformation
 import coil.transform.Transformation
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import au.com.shiftyjelly.pocketcasts.images.R as IR
@@ -33,27 +37,27 @@ open class PodcastImageLoader(
     var radiusPx: Int = 0
     var shouldScale: Boolean = true
 
-    fun getBitmap(userEpisode: UserEpisode, size: Int): Bitmap? {
-        return runBlocking {
-            try {
-                val request = load(userEpisode).size(size, size).build()
-                return@runBlocking context.imageLoader.execute(request).drawable!!.toBitmap()
-            } catch (e: Exception) {
-                val request = loadNoPodcastCoil().size(size, size).build()
-                return@runBlocking context.imageLoader.execute(request).drawable?.toBitmap()
-            }
-        }
+    fun getBitmap(userEpisode: UserEpisode, size: Int): Bitmap? = runBlocking {
+        val request = load(userEpisode).size(size, size).build()
+        executeImageRequest(request, size)
     }
 
-    fun getBitmap(podcast: Podcast, size: Int): Bitmap? {
-        return runBlocking {
-            try {
-                val request = load(podcast).size(size, size).build()
-                return@runBlocking context.imageLoader.execute(request).drawable!!.toBitmap()
-            } catch (e: Exception) {
-                val request = loadNoPodcastCoil().size(size, size).build()
-                return@runBlocking context.imageLoader.execute(request).drawable?.toBitmap()
-            }
+    fun getBitmap(podcast: Podcast, size: Int): Bitmap? = runBlocking {
+        getBitmapSuspend(podcast, size)
+    }
+
+    suspend fun getBitmapSuspend(podcast: Podcast, size: Int): Bitmap? {
+        val request = load(podcast).size(size, size).build()
+        return executeImageRequest(request, size)
+    }
+
+    private suspend fun executeImageRequest(request: ImageRequest, size: Int): Bitmap? {
+        val drawable = context.imageLoader.execute(request).drawable
+        return if (drawable != null) {
+            drawable.toBitmap()
+        } else {
+            val fallbackRequest = loadNoPodcastCoil().size(size, size).build()
+            context.imageLoader.execute(fallbackRequest).drawable?.toBitmap()
         }
     }
 
@@ -84,7 +88,11 @@ open class PodcastImageLoader(
 
     fun loadCoil(podcastUuid: String?, size: Int? = null, placeholder: Boolean = true, onComplete: () -> Unit = {}): ImageRequest.Builder {
         if (podcastUuid == null) return loadNoPodcastCoil()
-        val url = if (size != null) PodcastImage.getArtworkUrl(size = size, uuid = podcastUuid) else PodcastImage.getLargeArtworkUrl(uuid = podcastUuid)
+        val url = if (size != null) {
+            PodcastImage.getArtworkUrl(size = size, uuid = podcastUuid)
+        } else {
+            PodcastImage.getLargeArtworkUrl(uuid = podcastUuid, context = context)
+        }
 
         val placeholderDrawable = if (placeholder) placeholderResId() else 0
         var builder = ImageRequest.Builder(context)
@@ -113,11 +121,37 @@ open class PodcastImageLoader(
         return loadCoil(podcast?.uuid, onComplete = onComplete)
     }
 
+    fun loadEpisodeArtworkInto(
+        imageView: ImageView,
+        episode: PodcastEpisode,
+        coroutineScope: CoroutineScope,
+    ) {
+        if (episode.imageUrl != null) {
+            val episodeImageRequest = ImageRequest.Builder(context)
+                .data(episode.imageUrl)
+                .target(imageView)
+                .build()
+            val disposable = episodeImageRequest.context.imageLoader.enqueue(episodeImageRequest)
+            coroutineScope.launch {
+                val imageResult = disposable.job.await()
+                when (imageResult) {
+                    is SuccessResult -> { /* do nothing */ }
+                    is ErrorResult -> {
+                        // If episode artwork image fails, try podcast image
+                        loadPodcastImageForEpisode(episode).into(imageView)
+                    }
+                }
+            }
+        } else {
+            loadPodcastImageForEpisode(episode).into(imageView)
+        }
+    }
+
     fun loadPodcastUuid(podcastUuid: String?): ImageRequest.Builder {
         return loadCoil(podcastUuid)
     }
 
-    fun load(episode: PodcastEpisode): ImageRequest.Builder {
+    fun loadPodcastImageForEpisode(episode: PodcastEpisode): ImageRequest.Builder {
         return loadCoil(episode.podcastUuid)
     }
 
@@ -136,7 +170,7 @@ open class PodcastImageLoader(
     fun load(episode: BaseEpisode): ImageRequest.Builder {
         return when (episode) {
             is PodcastEpisode -> {
-                load(episode)
+                loadPodcastImageForEpisode(episode)
             }
             is UserEpisode -> {
                 load(episode)
@@ -184,7 +218,7 @@ open class PodcastImageLoader(
 
     private fun cacheSubscribedArtworkRequest(podcast: Podcast): ImageRequest {
         return ImageRequest.Builder(context)
-            .data(PodcastImage.getLargeArtworkUrl(podcast.uuid))
+            .data(PodcastImage.getLargeArtworkUrl(uuid = podcast.uuid, context = context))
             .memoryCachePolicy(CachePolicy.DISABLED)
             .build()
     }

@@ -11,6 +11,7 @@ import au.com.shiftyjelly.pocketcasts.analytics.FirebaseAnalyticsTracker
 import au.com.shiftyjelly.pocketcasts.analytics.TracksAnalyticsTracker
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeStatusEnum
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.repositories.di.ApplicationScope
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
 import au.com.shiftyjelly.pocketcasts.repositories.file.FileStorage
 import au.com.shiftyjelly.pocketcasts.repositories.file.StorageOptions
@@ -25,7 +26,10 @@ import au.com.shiftyjelly.pocketcasts.repositories.subscription.SubscriptionMana
 import au.com.shiftyjelly.pocketcasts.repositories.sync.SyncManager
 import au.com.shiftyjelly.pocketcasts.repositories.user.StatsManager
 import au.com.shiftyjelly.pocketcasts.repositories.user.UserManager
+import au.com.shiftyjelly.pocketcasts.shared.AppLifecycleObserver
 import au.com.shiftyjelly.pocketcasts.ui.helper.AppIcon
+import au.com.shiftyjelly.pocketcasts.utils.SentryHelper
+import au.com.shiftyjelly.pocketcasts.utils.SentryHelper.AppPlatform
 import au.com.shiftyjelly.pocketcasts.utils.TimberDebugTree
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBufferUncaughtExceptionHandler
@@ -35,15 +39,11 @@ import coil.ImageLoader
 import com.google.firebase.FirebaseApp
 import com.google.firebase.analytics.FirebaseAnalytics
 import dagger.hilt.android.HiltAndroidApp
-import io.reactivex.exceptions.UndeliverableException
-import io.reactivex.plugins.RxJavaPlugins
 import io.sentry.Sentry
 import io.sentry.android.core.SentryAndroid
 import io.sentry.protocol.User
-import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -74,8 +74,7 @@ class PocketCastsApplication : Application(), Configuration.Provider {
     @Inject lateinit var tracksTracker: TracksAnalyticsTracker
     @Inject lateinit var bumpStatsTracker: AnonymousBumpStatsTracker
     @Inject lateinit var syncManager: SyncManager
-
-    private val applicationScope = MainScope()
+    @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
 
     override fun onCreate() {
         if (BuildConfig.DEBUG) {
@@ -97,12 +96,11 @@ class PocketCastsApplication : Application(), Configuration.Provider {
 
         super.onCreate()
 
+        RxJavaUncaughtExceptionHandling.setUp()
         setupSentry()
         setupLogging()
         setupAnalytics()
         setupApp()
-
-        RxJavaUncaughtExceptionHandling.setUp()
     }
 
     private fun setupAnalytics() {
@@ -117,11 +115,12 @@ class PocketCastsApplication : Application(), Configuration.Provider {
         }
 
         SentryAndroid.init(this) { options ->
-            options.dsn = if (settings.getSendCrashReports()) settings.getSentryDsn() else ""
+            options.dsn = if (settings.sendCrashReports.value) settings.getSentryDsn() else ""
+            options.setTag(SentryHelper.GLOBAL_TAG_APP_PLATFORM, AppPlatform.MOBILE.value)
         }
 
         // Link email to Sentry crash reports only if the user has opted in
-        if (settings.getLinkCrashReportsToUser()) {
+        if (settings.linkCrashReportsToUser.value) {
             syncManager.getEmail()?.let { syncEmail ->
                 val user = User().apply { email = syncEmail }
                 Sentry.setUser(user)
@@ -140,7 +139,6 @@ class PocketCastsApplication : Application(), Configuration.Provider {
             .build()
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     private fun setupApp() {
         LogBuffer.i("Application", "App started. ${settings.getVersion()} (${settings.getVersionCode()})")
 
@@ -225,7 +223,7 @@ class PocketCastsApplication : Application(), Configuration.Provider {
             }
         }
 
-        GlobalScope.launch(Dispatchers.IO) { fileStorage.fixBrokenFiles(episodeManager) }
+        applicationScope.launch(Dispatchers.IO) { fileStorage.fixBrokenFiles(episodeManager) }
 
         userEpisodeManager.monitorUploads(applicationContext)
         downloadManager.beginMonitoringWorkManager(applicationContext)
@@ -248,19 +246,6 @@ class PocketCastsApplication : Application(), Configuration.Provider {
         LogBuffer.setup(File(filesDir, "logs").absolutePath)
         if (BuildConfig.DEBUG) {
             Timber.plant(TimberDebugTree())
-        }
-
-        // Fix for error with Rx flows that have an exception and have been disposed. "UndeliverableException: The exception could not be delivered to the consumer because it has already canceled/disposed the flow or the exception has nowhere to go to begin with."
-        RxJavaPlugins.setErrorHandler { e ->
-            if (e is UndeliverableException) {
-                // Merely log undeliverable exceptions
-                Timber.e(e)
-            } else {
-                // Forward all others to current thread's uncaught exception handler
-                Thread.currentThread().also { thread ->
-                    thread.uncaughtExceptionHandler?.uncaughtException(thread, e)
-                }
-            }
         }
     }
 }

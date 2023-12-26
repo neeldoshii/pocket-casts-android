@@ -17,7 +17,6 @@ import android.widget.Button
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.isVisible
-import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
@@ -30,9 +29,9 @@ import au.com.shiftyjelly.pocketcasts.repositories.support.Support
 import au.com.shiftyjelly.pocketcasts.settings.status.StatusFragment
 import au.com.shiftyjelly.pocketcasts.settings.viewmodel.HelpViewModel
 import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
-import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.views.extensions.findToolbar
 import au.com.shiftyjelly.pocketcasts.views.extensions.setup
+import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
 import au.com.shiftyjelly.pocketcasts.views.helper.HasBackstack
 import au.com.shiftyjelly.pocketcasts.views.helper.NavigationIcon.BackArrow
 import au.com.shiftyjelly.pocketcasts.views.helper.UiUtil
@@ -45,13 +44,12 @@ import au.com.shiftyjelly.pocketcasts.localization.R as LR
 import au.com.shiftyjelly.pocketcasts.views.R as VR
 
 @AndroidEntryPoint
-class HelpFragment : Fragment(), HasBackstack, Toolbar.OnMenuItemClickListener {
+class HelpFragment : BaseFragment(), HasBackstack, Toolbar.OnMenuItemClickListener {
 
     @Inject lateinit var analyticsTracker: AnalyticsTrackerWrapper
     @Inject lateinit var settings: Settings
     @Inject lateinit var subscriptionManager: SubscriptionManager
     @Inject lateinit var support: Support
-    @Inject lateinit var theme: Theme
 
     val viewModel by viewModels<HelpViewModel>()
 
@@ -98,9 +96,10 @@ class HelpFragment : Fragment(), HasBackstack, Toolbar.OnMenuItemClickListener {
 
         webView = (view.findViewById<View>(VR.id.webview) as WebView).apply {
             webViewClient = SupportWebViewClient()
-            loadUrl(loadedUrl ?: "https://support.pocketcasts.com/android/?device=android")
+            loadUrl(loadedUrl ?: Settings.INFO_FAQ_URL)
             settings.javaScriptEnabled = true
             settings.textZoom = 100
+            settings.domStorageEnabled = true
         }
         loadingView = view.findViewById(VR.id.progress_circle)
         layoutError = view.findViewById(VR.id.layoutLoadingError)
@@ -226,7 +225,7 @@ class HelpFragment : Fragment(), HasBackstack, Toolbar.OnMenuItemClickListener {
     private fun contactSupport() {
         when (subscriptionManager.getCachedStatus()) {
             null, is SubscriptionStatus.Free -> useForumPopup()
-            is SubscriptionStatus.Plus -> sendSupportEmail()
+            is SubscriptionStatus.Paid -> sendSupportEmail()
         }
 
         analyticsTracker.track(AnalyticsEvent.SETTINGS_GET_SUPPORT)

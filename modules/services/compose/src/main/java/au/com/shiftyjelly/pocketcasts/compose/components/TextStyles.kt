@@ -1,13 +1,13 @@
 package au.com.shiftyjelly.pocketcasts.compose.components
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.LocalTextStyle
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -16,34 +16,35 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import au.com.shiftyjelly.pocketcasts.compose.AppTheme
+import au.com.shiftyjelly.pocketcasts.compose.AppThemeWithBackground
+import au.com.shiftyjelly.pocketcasts.compose.extensions.nonScaledSp
 import au.com.shiftyjelly.pocketcasts.compose.theme
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
+import com.airbnb.android.showkase.annotation.ShowkaseComposable
 import java.util.Locale
-
-private val Float.nonScaledSp
-    @Composable
-    get() = (this / LocalDensity.current.fontScale).sp
-
-private val Int.nonScaledSp
-    @Composable
-    get() = (this / LocalDensity.current.fontScale).sp
 
 @Composable
 fun TextH10(
     text: String,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.theme.colors.primaryText01,
+    disableScale: Boolean = false,
+    fontFamily: FontFamily? = null,
+    fontSize: TextUnit = 31.sp,
+    fontWeight: FontWeight = FontWeight.W700,
     maxLines: Int = Int.MAX_VALUE,
-    textAlign: TextAlign? = null
+    lineHeight: TextUnit = 37.sp,
+    textAlign: TextAlign? = null,
 ) {
     Text(
         text = text,
         color = color,
-        fontSize = 31.sp,
-        lineHeight = 37.sp,
-        fontWeight = FontWeight.W700,
+        fontSize = if (disableScale) fontSize.value.nonScaledSp else fontSize,
+        lineHeight = if (disableScale) lineHeight.value.nonScaledSp else lineHeight,
+        fontFamily = fontFamily,
+        fontWeight = fontWeight,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
         textAlign = textAlign,
@@ -81,6 +82,7 @@ fun TextH30(
     modifier: Modifier = Modifier,
     textAlign: TextAlign? = null,
     color: Color = MaterialTheme.theme.colors.primaryText01,
+    fontFamily: FontFamily? = null,
     fontWeight: FontWeight? = null,
     maxLines: Int = Int.MAX_VALUE,
     disableScale: Boolean = false,
@@ -91,6 +93,7 @@ fun TextH30(
     Text(
         text = text,
         color = color,
+        fontFamily = fontFamily,
         fontSize = if (disableScale) fontSizeUpdated.value.nonScaledSp else fontSizeUpdated,
         lineHeight = if (disableScale) lineHeight.value.nonScaledSp else lineHeight.value.sp,
         textAlign = textAlign,
@@ -154,6 +157,7 @@ fun TextP40(
     color: Color = MaterialTheme.theme.colors.primaryText01,
     maxLines: Int = Int.MAX_VALUE,
     disableScale: Boolean = false,
+    fontFamily: FontFamily? = null,
     fontWeight: FontWeight? = null,
     fontSize: TextUnit = 16.sp,
     lineHeight: TextUnit = 22.sp,
@@ -166,6 +170,7 @@ fun TextP40(
         textAlign = textAlign,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
+        fontFamily = fontFamily,
         fontWeight = fontWeight,
         modifier = modifier
     )
@@ -178,16 +183,19 @@ fun TextH50(
     textAlign: TextAlign? = null,
     color: Color = MaterialTheme.theme.colors.primaryText01,
     maxLines: Int = Int.MAX_VALUE,
+    fontFamily: FontFamily? = null,
     fontSize: TextUnit = 14.sp,
     fontWeight: FontWeight = FontWeight.W500,
+    disableScale: Boolean = false,
     lineHeight: TextUnit = 20.sp,
 ) {
     Text(
         text = text,
         color = color,
-        fontSize = fontSize,
+        fontFamily = fontFamily,
+        fontSize = if (disableScale) fontSize.value.nonScaledSp else fontSize,
         fontWeight = fontWeight,
-        lineHeight = lineHeight,
+        lineHeight = if (disableScale) lineHeight.value.nonScaledSp else lineHeight,
         textAlign = textAlign,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
@@ -294,6 +302,7 @@ fun TextH70(
     modifier: Modifier = Modifier,
     textAlign: TextAlign? = null,
     color: Color = MaterialTheme.theme.colors.primaryText01,
+    fontFamily: FontFamily? = null,
     fontWeight: FontWeight = FontWeight.W500,
     maxLines: Int = Int.MAX_VALUE,
     disableScale: Boolean = false
@@ -302,6 +311,7 @@ fun TextH70(
         text = text,
         color = color,
         fontSize = if (disableScale) 12.nonScaledSp else 12.sp,
+        fontFamily = fontFamily,
         fontWeight = fontWeight,
         lineHeight = if (disableScale) 14.nonScaledSp else 14.sp,
         letterSpacing = if (disableScale) .25f.nonScaledSp else .25.sp,
@@ -336,10 +346,11 @@ fun TextC50(
 fun TextC70(
     text: String,
     modifier: Modifier = Modifier,
-    maxLines: Int = Int.MAX_VALUE
+    maxLines: Int = Int.MAX_VALUE,
+    isUpperCase: Boolean = true,
 ) {
     Text(
-        text = text.uppercase(Locale.getDefault()),
+        text = if (isUpperCase) text.uppercase(Locale.getDefault()) else text,
         color = MaterialTheme.theme.colors.primaryText02,
         fontFamily = FontFamily.SansSerif,
         fontSize = 12.sp,
@@ -352,18 +363,20 @@ fun TextC70(
     )
 }
 
-@Preview(showBackground = true)
+@ShowkaseComposable(name = "Text", group = "Text", styleName = "Light", defaultStyle = true)
+@Preview(name = "Light")
 @Composable
 fun TextStylesLightPreview() {
-    AppTheme(Theme.ThemeType.LIGHT) {
+    AppThemeWithBackground(Theme.ThemeType.LIGHT) {
         TextStylesPreview()
     }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF000000)
+@ShowkaseComposable(name = "Text", group = "Text", styleName = "Dark")
+@Preview(name = "Dark")
 @Composable
 fun TextStylesDarkPreview() {
-    AppTheme(Theme.ThemeType.DARK) {
+    AppThemeWithBackground(Theme.ThemeType.DARK) {
         TextStylesPreview()
     }
 }
@@ -371,17 +384,18 @@ fun TextStylesDarkPreview() {
 @Composable
 private fun TextStylesPreview() {
     Column {
-        TextH10("H10")
-        TextH20("H20")
-        TextH30("H30")
-        TextP30("P30")
-        TextH40("H40")
-        TextP40("P40")
-        TextH50("H50")
-        TextP50("P50")
-        TextP60("P60")
-        TextH70("H70")
-        TextC50("C50")
-        TextC70("C70")
+        val modifier = Modifier.padding(vertical = 2.dp)
+        TextH10("TextH10 - 31 / 700", modifier = modifier)
+        TextH20("TextH20 - 22 / 700", modifier = modifier)
+        TextH30("TextH30 - 18 / 600", modifier = modifier)
+        TextP30("TextP30 - 18 / 500", modifier = modifier)
+        TextH40("TextH40 - 15 / 500", modifier = modifier)
+        TextP40("TextP40 - 16 / 400", modifier = modifier)
+        TextH50("TextH50 - 14 / 500", modifier = modifier)
+        TextP50("TextP50 - 14 / 400", modifier = modifier)
+        TextP60("TextP60 - 13 / 400", modifier = modifier)
+        TextH70("TextH70 - 12 / 500", modifier = modifier)
+        TextC50("TextC50 - 13 / 700", modifier = modifier)
+        TextC70("TextC70 - 12 / 500", modifier = modifier)
     }
 }

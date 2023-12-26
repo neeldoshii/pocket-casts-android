@@ -18,14 +18,34 @@
             android:background="?attr/support_06"
             android:importantForAccessibility="noHideDescendants">
 
-            <ImageView
-                android:id="@+id/archiveIcon"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:padding="23dp"
-                android:src="@drawable/ic_archive"
-                app:tint="@android:color/white" />
+
+            <FrameLayout
+                android:id="@id/rightLeftItem2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="?attr/support_03">
+                <ImageView
+                    android:id="@+id/rightLeftIcon2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="23dp"
+                    android:layout_gravity="center_vertical|left"
+                    app:tint="@android:color/white"/>
+            </FrameLayout>
+            <FrameLayout
+                android:id="@id/rightLeftItem1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="?attr/support_04"
+                android:importantForAccessibility="noHideDescendants">
+                <ImageView
+                    android:id="@+id/rightLeftIcon1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="23dp"
+                    android:layout_gravity="center_vertical|left"
+                    app:tint="@android:color/white"/>
+            </FrameLayout>
         </FrameLayout>
 
         <FrameLayout
@@ -101,7 +121,7 @@
             <TextView
                 android:id="@+id/date"
                 style="?attr/textOverline"
-                android:textColor="?attr/player_contrast_02"
+                android:textColor="?attr/primary_text_02"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="16dp"
@@ -120,8 +140,8 @@
                 android:gravity="center_vertical"
                 android:paddingBottom="2dp"
                 android:text="@{episode.title}"
+                android:textColor="?attr/primary_text_01"
                 android:textAppearance="@style/DarkSubtitle1"
-                android:textColor="?attr/player_contrast_01"
                 app:layout_constraintBottom_toTopOf="@+id/info"
                 app:layout_constraintEnd_toStartOf="@+id/reorder"
                 app:layout_constraintStart_toEndOf="@+id/image"
@@ -150,7 +170,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="2dp"
                 android:textAppearance="@style/DarkBody2"
-                android:textColor="?attr/player_contrast_02"
+                android:textColor="?attr/primary_text_02"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toStartOf="@+id/reorder"
                 app:layout_constraintStart_toEndOf="@+id/downloaded"
@@ -170,7 +190,7 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent"
                 app:srcCompat="@drawable/ic_reorder"
-                app:tint="?attr/player_contrast_02"/>
+                app:tint="?attr/primary_icon_02"/>
 
         </androidx.constraintlayout.widget.ConstraintLayout>
     </FrameLayout>

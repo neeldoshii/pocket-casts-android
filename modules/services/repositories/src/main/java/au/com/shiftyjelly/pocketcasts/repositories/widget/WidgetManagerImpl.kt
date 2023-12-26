@@ -9,7 +9,6 @@ import android.view.View
 import android.widget.RemoteViews
 import androidx.media.session.MediaButtonReceiver
 import au.com.shiftyjelly.pocketcasts.core.ui.widget.PodcastWidget
-import au.com.shiftyjelly.pocketcasts.models.db.helper.UserEpisodePodcastSubstitute
 import au.com.shiftyjelly.pocketcasts.models.entity.BaseEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
@@ -19,6 +18,7 @@ import au.com.shiftyjelly.pocketcasts.repositories.R
 import au.com.shiftyjelly.pocketcasts.repositories.images.PodcastImageLoader
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.PodcastManager
+import au.com.shiftyjelly.pocketcasts.utils.AppPlatform
 import au.com.shiftyjelly.pocketcasts.utils.Util
 import au.com.shiftyjelly.pocketcasts.utils.extensions.getLaunchActivityPendingIntent
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -33,27 +33,29 @@ class WidgetManagerImpl @Inject constructor(
 ) : WidgetManager {
 
     override fun updateWidget(podcast: Podcast?, playing: Boolean, playingEpisode: BaseEpisode?) {
-        if (Util.isAutomotive(context)) {
-            return
-        }
+        when (Util.getAppPlatform(context)) {
+            AppPlatform.Automotive,
+            AppPlatform.WearOs -> { /* do nothing */ }
+            AppPlatform.Phone -> {
+                try {
+                    val appWidgetManager = AppWidgetManager.getInstance(context)
 
-        try {
-            val appWidgetManager = AppWidgetManager.getInstance(context)
-
-            val views = RemoteViews(context.packageName, R.layout.widget)
-            val widgetName = ComponentName(context, PodcastWidget::class.java)
-            if (playingEpisode == null) {
-                showPlayingControls(false, views)
-            } else {
-                showPlayingControls(true, views)
-                updateArtWork(podcast, playingEpisode, views, widgetName, context)
-                showPlayButton(playing, views)
-                updateSkipAmounts(views, settings)
+                    val views = RemoteViews(context.packageName, R.layout.widget)
+                    val widgetName = ComponentName(context, PodcastWidget::class.java)
+                    if (playingEpisode == null) {
+                        showPlayingControls(false, views)
+                    } else {
+                        showPlayingControls(true, views)
+                        updateArtWork(podcast, playingEpisode, views, widgetName, context)
+                        showPlayButton(playing, views)
+                        updateSkipAmounts(views, settings)
+                    }
+                    updateOnClicks(views, context)
+                    appWidgetManager.updateAppWidget(widgetName, views)
+                } catch (e: Exception) {
+                    Timber.e(e)
+                }
             }
-            updateOnClicks(views, context)
-            appWidgetManager.updateAppWidget(widgetName, views)
-        } catch (e: Exception) {
-            Timber.e(e)
         }
     }
 
@@ -128,8 +130,8 @@ class WidgetManagerImpl @Inject constructor(
     }
 
     private fun updateSkipAmounts(views: RemoteViews, settings: Settings) {
-        val jumpFwdAmount = settings.getSkipForwardInSecs()
-        val jumpBackAmount = settings.getSkipBackwardInSecs()
+        val jumpFwdAmount = settings.skipForwardInSecs.value
+        val jumpBackAmount = settings.skipBackInSecs.value
 
         views.setTextViewText(R.id.widget_skip_back_text, "$jumpBackAmount")
         views.setContentDescription(R.id.widget_skip_back_text, "Skip back $jumpBackAmount seconds")
@@ -144,7 +146,7 @@ class WidgetManagerImpl @Inject constructor(
             return
         }
 
-        val podcastTitle = podcast?.title ?: UserEpisodePodcastSubstitute.substituteTitle
+        val podcastTitle = podcast?.title ?: Podcast.userPodcast.title
         views.setContentDescription(R.id.widget_artwork, "$podcastTitle. Open Pocket Casts")
         views.setImageViewResource(R.id.widget_artwork, IR.drawable.defaultartwork_small_dark)
 

@@ -15,6 +15,7 @@ import au.com.shiftyjelly.pocketcasts.localization.R
 import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.models.to.SubscriptionStatus
+import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionTier
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
 import au.com.shiftyjelly.pocketcasts.repositories.file.FileStorage
@@ -29,6 +30,8 @@ import au.com.shiftyjelly.pocketcasts.utils.FileUtil
 import au.com.shiftyjelly.pocketcasts.utils.Network
 import au.com.shiftyjelly.pocketcasts.utils.SystemBatteryRestrictions
 import au.com.shiftyjelly.pocketcasts.utils.Util
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import com.jaredrummler.android.device.DeviceName
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -38,6 +41,7 @@ import kotlinx.coroutines.reactive.awaitFirst
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.BufferedWriter
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStreamWriter
@@ -83,10 +87,10 @@ class Support @Inject constructor(
             if (emailSupport) {
                 intent.putExtra(Intent.EXTRA_EMAIL, arrayOf("support@pocketcasts.com"))
             }
-            val isPlus = subscriptionManager.getCachedStatus() is SubscriptionStatus.Plus
+            val isPaid = subscriptionManager.getCachedStatus() is SubscriptionStatus.Paid
             intent.putExtra(
                 Intent.EXTRA_SUBJECT,
-                "$subject v${settings.getVersion()} ${if (isPlus) " - Plus Account" else ""}"
+                "$subject v${settings.getVersion()} ${getAccountType(isPaid)}"
             )
 
             // try to attach the debug information
@@ -136,11 +140,109 @@ class Support @Inject constructor(
         return intent
     }
 
+    suspend fun shareWearLogs(logBytes: ByteArray, subject: String, context: Context): Intent =
+        withContext(Dispatchers.IO) {
+            val intent = Intent(Intent.ACTION_SEND)
+            intent.type = "text/html"
+
+            val isPaid = subscriptionManager.getCachedStatus() is SubscriptionStatus.Paid
+            intent.putExtra(
+                Intent.EXTRA_SUBJECT,
+                "$subject v${settings.getVersion()} ${getAccountType(isPaid)}"
+            )
+
+            try {
+                val emailFolder = File(context.filesDir, "email")
+                emailFolder.mkdirs()
+                val debugFile = File(emailFolder, "debug_wear.txt")
+
+                debugFile.writeBytes(logBytes)
+                val fileUri =
+                    FileUtil.createUriWithReadPermissions(debugFile, intent, context)
+                intent.putExtra(Intent.EXTRA_STREAM, fileUri)
+            } catch (e: Exception) {
+                Timber.e(e)
+                intent.putExtra(Intent.EXTRA_TEXT, String(logBytes))
+            }
+            intent
+        }
+
+    suspend fun emailWearLogsToSupportIntent(logBytes: ByteArray, context: Context): Intent {
+        val subject = "Android wear support"
+        val intro = "Hi there, just needed help with something..."
+        val intent = Intent(Intent.ACTION_SEND)
+
+        withContext(Dispatchers.IO) {
+            intent.type = "text/html"
+            intent.putExtra(Intent.EXTRA_EMAIL, arrayOf("support@pocketcasts.com"))
+            val isPaid = subscriptionManager.getCachedStatus() is SubscriptionStatus.Paid
+            intent.putExtra(
+                Intent.EXTRA_SUBJECT,
+                "$subject v${settings.getVersion()} ${getAccountType(isPaid)}"
+            )
+
+            try {
+                val emailFolder = File(context.filesDir, "email")
+                emailFolder.mkdirs()
+                val debugFile = File(emailFolder, "debug_wear.txt")
+
+                debugFile.writeBytes(logBytes)
+                val fileUri =
+                    FileUtil.createUriWithReadPermissions(debugFile, intent, context)
+                intent.putExtra(Intent.EXTRA_STREAM, fileUri)
+                intent.putExtra(
+                    Intent.EXTRA_TEXT,
+                    HtmlCompat.fromHtml(
+                        "$intro<br/><br/>",
+                        HtmlCompat.FROM_HTML_MODE_COMPACT
+                    )
+                )
+            } catch (e: Exception) {
+                Timber.e(e)
+
+                val debugStr = buildString {
+                    append(intro)
+                    append("<br/><br/><br/><br/><br/><br/><br/>")
+                    append(String(logBytes))
+                }
+
+                intent.putExtra(Intent.EXTRA_TEXT, debugStr)
+            }
+        }
+
+        return intent
+    }
+
+    private fun getAccountType(isPaid: Boolean) = if (isPaid) {
+        if (FeatureFlag.isEnabled(Feature.ADD_PATRON_ENABLED)) {
+            when ((subscriptionManager.getCachedStatus() as SubscriptionStatus.Paid).tier) {
+                SubscriptionTier.PATRON -> "Patron Account"
+                SubscriptionTier.PLUS -> "Plus Account"
+                SubscriptionTier.NONE -> ""
+            }
+        } else {
+            "Plus Account"
+        }
+    } else {
+        ""
+    }
+
+    suspend fun getLogs(): String =
+        withContext(Dispatchers.IO) {
+            buildString {
+                append(getUserDebug(false))
+                val outputStream = ByteArrayOutputStream()
+                LogBuffer.output(outputStream)
+                append(outputStream.toString())
+            }
+        }
+
     @Suppress("DEPRECATION")
     suspend fun getUserDebug(html: Boolean): String {
         val output = StringBuilder()
         try {
             val eol = if (html) "<br/>" else "\n"
+            output.append("Platform : ").append(Util.getAppPlatform(context)).append(eol)
             output.append("App version : ").append(settings.getVersion()).append(" (").append(settings.getVersionCode()).append(")").append(eol)
             output.append("Sync account: ").append(if (syncManager.isLoggedIn()) syncManager.getEmail() else "Not logged in").append(eol)
             if (syncManager.isLoggedIn()) {
@@ -161,7 +263,7 @@ class Support @Inject constructor(
             output.append("Android version: ").append(Build.VERSION.RELEASE).append(" SDK ").append(Build.VERSION.SDK_INT).append(eol)
             output.append(eol)
 
-            output.append("Background refresh: ").append(settings.refreshPodcastsAutomatically()).append(eol)
+            output.append("Background refresh: ").append(settings.backgroundRefreshPodcasts.value).append(eol)
             output.append("Battery restriction: ${systemBatteryRestrictions.status}")
             output.append(eol)
 
@@ -211,20 +313,18 @@ class Support @Inject constructor(
                 Timber.e(e)
             }
 
-            val afterPlaying = context.resources.getStringArray(R.array.settings_auto_archive_played_values)
-            val inactive = context.resources.getStringArray(R.array.settings_auto_archive_inactive_values)
             output.append(eol)
             output.append("Auto archive settings").append(eol)
-            output.append("Auto archive played episodes after: " + afterPlaying[settings.getAutoArchiveAfterPlaying().toIndex()]).append(eol)
-            output.append("Auto archive inactive episodes after: " + inactive[settings.getAutoArchiveInactive().toIndex()]).append(eol)
-            output.append("Auto archive starred episodes: " + settings.getAutoArchiveIncludeStarred().toString()).append(eol)
+            output.append("Auto archive played episodes after: ${settings.autoArchiveAfterPlaying.value.analyticsValue}").append(eol)
+            output.append("Auto archive inactive episodes after: ${settings.autoArchiveInactive.value.analyticsValue}").append(eol)
+            output.append("Auto archive starred episodes: ${settings.autoArchiveIncludeStarred.value}").append(eol)
 
             output.append(eol)
             output.append("Auto downloads").append(eol)
             output.append("  Any podcast? ").append(yesNoString(autoDownloadOn[0])).append(eol)
-            output.append("  Up Next? ").append(yesNoString(settings.isUpNextAutoDownloaded())).append(eol)
-            output.append("  Only on unmetered WiFi? ").append(yesNoString(settings.isPodcastAutoDownloadUnmeteredOnly())).append(eol)
-            output.append("  Only when charging? ").append(yesNoString(settings.isPodcastAutoDownloadPowerOnly())).append(eol)
+            output.append("  Up Next? ").append(yesNoString(settings.autoDownloadUpNext.value)).append(eol)
+            output.append("  Only on unmetered WiFi? ").append(yesNoString(settings.autoDownloadUnmeteredOnly.value)).append(eol)
+            output.append("  Only when charging? ").append(yesNoString(settings.autoDownloadOnlyWhenCharging.value)).append(eol)
             output.append(eol)
 
             output.append("Current connection").append(eol)
@@ -233,7 +333,7 @@ class Support @Inject constructor(
             output.append("  Restrict Background Status: ").append(Network.getRestrictBackgroundStatusString(context)).append(eol)
             output.append(eol)
 
-            output.append("Warning when not on Wifi? ").append(yesNoString(settings.warnOnMeteredNetwork())).append(eol)
+            output.append("Warning when not on Wifi? ").append(yesNoString(settings.warnOnMeteredNetwork.value)).append(eol)
             output.append(eol)
 
             output.append("Work Manager Tasks").append(eol)
@@ -270,20 +370,28 @@ class Support @Inject constructor(
                 output.append("Screen: ").append(width).append("x").append(height).append(", dpi: ").append(metrics.densityDpi).append(", density: ").append(metrics.density).append(eol)
             }
 
-            val storageFolder = fileStorage.storageDirectory.absolutePath
-            output.append("Storage: ").append(if (settings.usingCustomFolderStorage()) "Custom Folder" else settings.getStorageChoiceName()).append(", ").append(storageFolder).append(eol)
-            output.append("Storage options:").append(eol)
-            val storageOptions = StorageOptions()
-            for (folderLocation in storageOptions.getFolderLocations(context)) {
-                if (storageFolder == folderLocation.filePath) {
-                    continue
+            try {
+                val storageFolder = fileStorage.storageDirectory.absolutePath
+                output.append("Storage: ").append(if (settings.usingCustomFolderStorage()) "Custom Folder" else settings.getStorageChoiceName()).append(", ").append(storageFolder).append(eol)
+                output.append("Storage options:").append(eol)
+                val storageOptions = StorageOptions()
+                for (folderLocation in storageOptions.getFolderLocations(context)) {
+                    if (storageFolder == folderLocation.filePath) {
+                        continue
+                    }
+                    output.append(folderLocation.label).append(", ").append(folderLocation.filePath).append(eol)
                 }
-                output.append(folderLocation.label).append(", ").append(folderLocation.filePath).append(eol)
+            } catch (e: Exception) {
+                Timber.e(e)
             }
             output.append("Database: " + Util.formattedBytes(context.getDatabasePath("pocketcasts").length(), context = context)).append(eol)
-            output.append("Temp directory: " + Util.formattedBytes(FileUtil.folderSize(fileStorage.tempPodcastDirectory), context = context)).append(eol)
-            output.append("Podcast directory: " + Util.formattedBytes(FileUtil.folderSize(fileStorage.podcastDirectory), context = context)).append(eol)
-            output.append("Network image directory: " + Util.formattedBytes(FileUtil.folderSize(fileStorage.networkImageDirectory), context = context)).append(eol)
+            try {
+                output.append("Temp directory: " + Util.formattedBytes(FileUtil.folderSize(fileStorage.tempPodcastDirectory), context = context)).append(eol)
+                output.append("Podcast directory: " + Util.formattedBytes(FileUtil.folderSize(fileStorage.podcastDirectory), context = context)).append(eol)
+                output.append("Network image directory: " + Util.formattedBytes(FileUtil.folderSize(fileStorage.networkImageDirectory), context = context)).append(eol)
+            } catch (e: Exception) {
+                Timber.e(e)
+            }
 
             if (!html) {
                 output.append(eol)
@@ -304,11 +412,11 @@ class Support @Inject constructor(
                 output.append(eol)
 
                 output.append("Notifications").append(eol)
-                output.append("Play over notifications? ").append(if (settings.canDuckAudioWithNotifications()) "yes" else "no").append(eol)
-                output.append("Hide notification on pause? ").append(if (settings.hideNotificationOnPause()) "yes" else "no").append(eol)
+                output.append("Play over notifications? ").append(settings.playOverNotification.value.analyticsString).append(eol)
+                output.append("Hide notification on pause? ").append(if (settings.hideNotificationOnPause.value) "yes" else "no").append(eol)
                 output.append(eol)
 
-                val effects = settings.getGlobalPlaybackEffects()
+                val effects = settings.globalPlaybackEffects.value
                 output.append("Effects").append(eol)
                 output.append("Global Audio effects: ")
                     .append(" Playback speed: ").append(effects.playbackSpeed).append(eol)
@@ -354,6 +462,7 @@ class Support @Inject constructor(
                 }
             }
         } catch (e: Exception) {
+            Timber.e(e)
             output.append("Unable to report all user debug info due to an exception. ").append(e.message)
         }
 

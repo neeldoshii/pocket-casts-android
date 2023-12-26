@@ -4,8 +4,8 @@ import android.content.res.Resources
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
@@ -47,9 +47,9 @@ class DiscoverViewModel @Inject constructor(
     val analyticsTracker: AnalyticsTrackerWrapper,
 ) : ViewModel() {
     private val disposables = CompositeDisposable()
-    private val playbackSource = AnalyticsSource.DISCOVER
+    private val sourceView = SourceView.DISCOVER
     val state = MutableLiveData<DiscoverState>().apply { value = DiscoverState.Loading }
-    var currentRegionCode: String? = settings.getDiscoveryCountryCode()
+    var currentRegionCode: String? = settings.discoverCountryCode.value
     var replacements = emptyMap<String, String>()
     private var isFragmentChangingConfigurations: Boolean = false
 
@@ -100,7 +100,7 @@ class DiscoverViewModel @Inject constructor(
     }
 
     fun changeRegion(region: DiscoverRegion, resources: Resources) {
-        settings.setDiscoveryCountryCode(region.code)
+        settings.discoverCountryCode.set(region.code)
         currentRegionCode = region.code
         loadData(resources)
     }
@@ -142,7 +142,6 @@ class DiscoverViewModel @Inject constructor(
             .map { sponsoredPodcast ->
                 loadPodcastList(sponsoredPodcast.source as String)
                     .filter {
-                        Timber.e("Invalid sponsored podcast list found.")
                         it.podcasts.isNotEmpty() && it.listId != null
                     }
                     .map {
@@ -214,7 +213,10 @@ class DiscoverViewModel @Inject constructor(
 
     fun findOrDownloadEpisode(discoverEpisode: DiscoverEpisode, success: (episode: PodcastEpisode) -> Unit) {
         podcastManager.findOrDownloadPodcastRx(discoverEpisode.podcast_uuid)
-            .flatMapMaybe { episodeManager.findByUuidRx(discoverEpisode.uuid) }
+            .flatMapMaybe {
+                @Suppress("DEPRECATION")
+                episodeManager.findByUuidRx(discoverEpisode.uuid)
+            }
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
             .subscribeBy(
@@ -231,11 +233,11 @@ class DiscoverViewModel @Inject constructor(
     }
 
     fun playEpisode(episode: PodcastEpisode) {
-        playbackManager.playNow(episode = episode, forceStream = true, playbackSource = playbackSource)
+        playbackManager.playNow(episode = episode, forceStream = true, sourceView = sourceView)
     }
 
     fun stopPlayback() {
-        playbackManager.stopAsync(playbackSource = playbackSource)
+        playbackManager.stopAsync(sourceView = sourceView)
     }
 }
 

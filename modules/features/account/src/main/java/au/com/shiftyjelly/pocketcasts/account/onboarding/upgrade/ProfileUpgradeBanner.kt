@@ -31,13 +31,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import au.com.shiftyjelly.pocketcasts.account.onboarding.components.SubscriptionBadge
 import au.com.shiftyjelly.pocketcasts.account.onboarding.components.UpgradeFeatureItem
 import au.com.shiftyjelly.pocketcasts.account.onboarding.upgrade.OnboardingUpgradeHelper.IconRow
 import au.com.shiftyjelly.pocketcasts.account.viewmodel.ProfileUpgradeBannerViewModel
 import au.com.shiftyjelly.pocketcasts.account.viewmodel.ProfileUpgradeBannerViewModel.State
 import au.com.shiftyjelly.pocketcasts.compose.components.HorizontalPagerWrapper
 import au.com.shiftyjelly.pocketcasts.compose.components.TextH60
+import au.com.shiftyjelly.pocketcasts.compose.images.SubscriptionBadge
 import au.com.shiftyjelly.pocketcasts.compose.theme
 import au.com.shiftyjelly.pocketcasts.models.type.Subscription
 import au.com.shiftyjelly.pocketcasts.models.type.Subscription.SubscriptionTier
@@ -141,7 +141,16 @@ private fun FeatureCard(
         Spacer(modifier = Modifier.weight(1f))
         Spacer(modifier = Modifier.height(8.dp))
 
-        val primaryText = stringResource(LR.string.upgrade_to, stringResource(button.shortNameRes))
+        val primaryText = when (button.planType) {
+            UpgradeButton.PlanType.RENEW -> stringResource(LR.string.renew_your_subscription)
+            UpgradeButton.PlanType.SUBSCRIBE -> {
+                when (button.subscription) {
+                    is Subscription.Simple -> stringResource(LR.string.subscribe_to, stringResource(button.shortNameRes))
+                    is Subscription.WithTrial -> stringResource(LR.string.trial_start)
+                }
+            }
+            UpgradeButton.PlanType.UPGRADE -> stringResource(LR.string.upgrade_to, stringResource(button.shortNameRes))
+        }
         OnboardingUpgradeHelper.UpgradeRowButton(
             primaryText = primaryText,
             backgroundColor = colorResource(button.backgroundColorRes),

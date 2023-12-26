@@ -1,11 +1,12 @@
 package au.com.shiftyjelly.pocketcasts.wear.ui.authentication
 
+import androidx.compose.runtime.Composable
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.navigation
-import au.com.shiftyjelly.pocketcasts.wear.ui.LoggingInScreen
-import au.com.shiftyjelly.pocketcasts.wear.ui.WatchListScreen
-import com.google.android.horologist.compose.navscaffold.NavScaffoldViewModel
+import au.com.shiftyjelly.pocketcasts.wear.extensions.responsive
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.horologist.compose.layout.ScalingLazyColumnDefaults
 import com.google.android.horologist.compose.navscaffold.composable
 import com.google.android.horologist.compose.navscaffold.scrollable
 
@@ -15,13 +16,18 @@ private object AuthenticationNavRoutes {
     const val loginScreen = "login_screen"
     const val loginWithGoogle = "login_with_google"
     const val loginWithPhone = "login_with_phone"
-    const val loginWithEmail = "login_with_email"
 }
 
-fun NavGraphBuilder.authenticationNavGraph(navController: NavController) {
+fun NavGraphBuilder.authenticationNavGraph(
+    navController: NavController,
+    googleSignInSuccessScreen: @Composable (GoogleSignInAccount?) -> Unit,
+) {
     navigation(startDestination = AuthenticationNavRoutes.loginScreen, route = authenticationSubGraph) {
 
-        scrollable(AuthenticationNavRoutes.loginScreen) {
+        scrollable(
+            route = AuthenticationNavRoutes.loginScreen,
+            columnStateFactory = ScalingLazyColumnDefaults.responsive(),
+        ) {
             LoginScreen(
                 columnState = it.columnState,
                 onLoginWithGoogleClick = {
@@ -30,20 +36,13 @@ fun NavGraphBuilder.authenticationNavGraph(navController: NavController) {
                 onLoginWithPhoneClick = {
                     navController.navigate(AuthenticationNavRoutes.loginWithPhone)
                 },
-                onLoginWithEmailClick = {
-                    navController.navigate(AuthenticationNavRoutes.loginWithEmail)
-                },
             )
         }
 
-        composable(AuthenticationNavRoutes.loginWithEmail) {
-            it.viewModel.timeTextMode = NavScaffoldViewModel.TimeTextMode.Off
-            LoginWithEmailScreen(
-                onSignInSuccess = { navController.navigate(LoggingInScreen.route) },
-            )
-        }
-
-        scrollable(AuthenticationNavRoutes.loginWithPhone) {
+        scrollable(
+            route = AuthenticationNavRoutes.loginWithPhone,
+            columnStateFactory = ScalingLazyColumnDefaults.responsive(),
+        ) {
             LoginWithPhoneScreen(
                 columnState = it.columnState,
                 onDone = { navController.popBackStack() },
@@ -52,7 +51,7 @@ fun NavGraphBuilder.authenticationNavGraph(navController: NavController) {
 
         composable(AuthenticationNavRoutes.loginWithGoogle) {
             LoginWithGoogleScreen(
-                onAuthSucceed = { WatchListScreen.popToTop(navController) },
+                signInSuccessScreen = googleSignInSuccessScreen,
                 onAuthCanceled = { navController.popBackStack() },
             )
         }

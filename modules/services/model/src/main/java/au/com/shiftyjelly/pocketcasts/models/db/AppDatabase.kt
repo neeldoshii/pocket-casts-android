@@ -18,8 +18,11 @@ import au.com.shiftyjelly.pocketcasts.models.converter.EpisodesSortTypeConverter
 import au.com.shiftyjelly.pocketcasts.models.converter.PodcastAutoUpNextConverter
 import au.com.shiftyjelly.pocketcasts.models.converter.PodcastLicensingEnumConverter
 import au.com.shiftyjelly.pocketcasts.models.converter.PodcastsSortTypeConverter
+import au.com.shiftyjelly.pocketcasts.models.converter.SafeDateTypeConverter
+import au.com.shiftyjelly.pocketcasts.models.converter.SyncStatusConverter
 import au.com.shiftyjelly.pocketcasts.models.converter.TrimModeTypeConverter
 import au.com.shiftyjelly.pocketcasts.models.converter.UserEpisodeServerStatusConverter
+import au.com.shiftyjelly.pocketcasts.models.db.dao.BookmarkDao
 import au.com.shiftyjelly.pocketcasts.models.db.dao.BumpStatsDao
 import au.com.shiftyjelly.pocketcasts.models.db.dao.EpisodeDao
 import au.com.shiftyjelly.pocketcasts.models.db.dao.FolderDao
@@ -31,6 +34,7 @@ import au.com.shiftyjelly.pocketcasts.models.db.dao.UpNextChangeDao
 import au.com.shiftyjelly.pocketcasts.models.db.dao.UpNextDao
 import au.com.shiftyjelly.pocketcasts.models.db.dao.UserEpisodeDao
 import au.com.shiftyjelly.pocketcasts.models.entity.AnonymousBumpStat
+import au.com.shiftyjelly.pocketcasts.models.entity.Bookmark
 import au.com.shiftyjelly.pocketcasts.models.entity.Folder
 import au.com.shiftyjelly.pocketcasts.models.entity.Playlist
 import au.com.shiftyjelly.pocketcasts.models.entity.PlaylistEpisode
@@ -47,6 +51,7 @@ import au.com.shiftyjelly.pocketcasts.localization.R as LR
 @Database(
     entities = [
         AnonymousBumpStat::class,
+        Bookmark::class,
         PodcastEpisode::class,
         Folder::class,
         Playlist::class,
@@ -58,21 +63,23 @@ import au.com.shiftyjelly.pocketcasts.localization.R as LR
         UserEpisode::class,
         PodcastRatings::class
     ],
-    version = 76,
+    version = 79,
     exportSchema = true
 )
 @TypeConverters(
     AnonymousBumpStat.CustomEventPropsTypeConverter::class,
     BundlePaidTypeConverter::class,
     DateTypeConverter::class,
+    SafeDateTypeConverter::class,
     EpisodePlayingStatusConverter::class,
     EpisodeStatusEnumConverter::class,
     EpisodesSortTypeConverter::class,
     PodcastAutoUpNextConverter::class,
     PodcastLicensingEnumConverter::class,
     PodcastsSortTypeConverter::class,
-    UserEpisodeServerStatusConverter::class,
+    SyncStatusConverter::class,
     TrimModeTypeConverter::class,
+    UserEpisodeServerStatusConverter::class,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun podcastDao(): PodcastDao
@@ -85,6 +92,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bumpStatsDao(): BumpStatsDao
     abstract fun searchHistoryDao(): SearchHistoryDao
     abstract fun podcastRatingsDao(): PodcastRatingsDao
+    abstract fun bookmarkDao(): BookmarkDao
 
     companion object {
         // This seems dodgy but I got it from Google, https://github.com/googlesamples/android-sunflower/blob/master/app/src/main/java/com/google/samples/apps/sunflower/data/AppDatabase.kt
@@ -428,6 +436,61 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_75_76 = addMigration(75, 76) { database ->
             database.execSQL("ALTER TABLE episodes RENAME TO podcast_episodes")
+        }
+
+        val MIGRATION_76_77 = addMigration(76, 77) { database ->
+            database.execSQL(
+                """
+                    CREATE TABLE IF NOT EXISTS `bookmarks` (
+                        `uuid` TEXT NOT NULL,
+                        `podcast_uuid` TEXT NOT NULL,
+                        `episode_uuid` TEXT NOT NULL,
+                        `time` INTEGER NOT NULL, 
+                        `created_at` INTEGER NOT NULL, 
+                        `title` TEXT NOT NULL, 
+                        `title_modified` INTEGER, 
+                        `deleted` INTEGER NOT NULL, 
+                        `deleted_modified` INTEGER,
+                        `sync_status` INTEGER NOT NULL, 
+                        PRIMARY KEY(`uuid`)
+                    );
+                """.trimIndent()
+            )
+            database.execSQL("CREATE INDEX IF NOT EXISTS `bookmarks_podcast_uuid` ON `bookmarks` (`podcast_uuid`)")
+        }
+
+        // Change average column to be nullable
+        val MIGRATION_77_78 = addMigration(77, 78) { database ->
+            database.execSQL(
+                """
+                    CREATE TABLE IF NOT EXISTS `temp_podcast_ratings` (
+                        `podcast_uuid` TEXT NOT NULL,
+                        `average` REAL,
+                        `total` INTEGER, 
+                        PRIMARY KEY(`podcast_uuid`)
+                    )
+                """.trimIndent()
+            )
+
+            database.execSQL(
+                """
+                    INSERT INTO `temp_podcast_ratings` (`podcast_uuid`, `average`, `total`)
+                    SELECT `podcast_uuid`, `average`, `total` 
+                    FROM `podcast_ratings`
+                """.trimIndent()
+            )
+
+            database.execSQL("DROP TABLE `podcast_ratings`;")
+            database.execSQL("ALTER TABLE `temp_podcast_ratings` RENAME TO `podcast_ratings`;")
+        }
+
+        val MIGRATION_78_79 = addMigration(78, 79) { database ->
+            database.execSQL(
+                """
+                    ALTER TABLE podcast_episodes
+                    ADD COLUMN image_url TEXT
+                """.trimIndent()
+            )
         }
 
         fun addMigrations(databaseBuilder: Builder<AppDatabase>, context: Context) {
@@ -796,6 +859,9 @@ abstract class AppDatabase : RoomDatabase() {
                 MIGRATION_73_74,
                 MIGRATION_74_75,
                 MIGRATION_75_76,
+                MIGRATION_76_77,
+                MIGRATION_77_78,
+                MIGRATION_78_79,
             )
         }
 
@@ -809,7 +875,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         private fun getColumnNames(database: SupportSQLiteDatabase, tableName: String): List<String> {
             val names = mutableListOf<String>()
-            database.query("select * from $tableName limit 1", null).use { cursor ->
+            database.query("select * from $tableName limit 1").use { cursor ->
                 names.addAll(Arrays.asList(*cursor.columnNames))
             }
             return names

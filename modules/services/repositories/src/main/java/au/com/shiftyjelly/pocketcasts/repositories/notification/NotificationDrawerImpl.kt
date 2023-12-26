@@ -13,7 +13,6 @@ import android.support.v4.media.session.PlaybackStateCompat.ACTION_STOP
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.media.session.MediaButtonReceiver
-import au.com.shiftyjelly.pocketcasts.models.db.helper.UserEpisodePodcastSubstitute
 import au.com.shiftyjelly.pocketcasts.models.entity.BaseEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
@@ -39,8 +38,8 @@ class NotificationDrawerImpl @Inject constructor(
 
     private val playAction = NotificationCompat.Action(IR.drawable.notification_play, context.getString(LR.string.play), MediaButtonReceiver.buildMediaButtonPendingIntent(context, ACTION_PLAY))
     private val pauseAction = NotificationCompat.Action(IR.drawable.notification_pause, context.getString(LR.string.pause), MediaButtonReceiver.buildMediaButtonPendingIntent(context, ACTION_PAUSE))
-    private val skipBackAction = NotificationCompat.Action(IR.drawable.notification_skipbackwards, context.getString(LR.string.player_notification_skip_back, settings.getSkipBackwardInSecs()), MediaButtonReceiver.buildMediaButtonPendingIntent(context, ACTION_SKIP_TO_PREVIOUS))
-    private val skipForwardAction = NotificationCompat.Action(IR.drawable.notification_skipforward, context.getString(LR.string.player_notification_skip_forward, settings.getSkipForwardInSecs()), MediaButtonReceiver.buildMediaButtonPendingIntent(context, ACTION_SKIP_TO_NEXT))
+    private val skipBackAction = NotificationCompat.Action(IR.drawable.notification_skipbackwards, context.getString(LR.string.player_notification_skip_back, settings.skipBackInSecs.value), MediaButtonReceiver.buildMediaButtonPendingIntent(context, ACTION_SKIP_TO_PREVIOUS))
+    private val skipForwardAction = NotificationCompat.Action(IR.drawable.notification_skipforward, context.getString(LR.string.player_notification_skip_forward, settings.skipForwardInSecs.value), MediaButtonReceiver.buildMediaButtonPendingIntent(context, ACTION_SKIP_TO_NEXT))
     private val stopPendingIntent = MediaButtonReceiver.buildMediaButtonPendingIntent(context, ACTION_STOP)
 
     private var notificationData: NotificationData? = null
@@ -103,7 +102,7 @@ class NotificationDrawerImpl @Inject constructor(
         }
 
         val bitmap = if (podcast != null) loadArtwork(podcast) else if (episode is UserEpisode) loadUserEpisodeArtwork(episode) else null
-        val podcastTitle = (if (episode is PodcastEpisode) podcast?.title else UserEpisodePodcastSubstitute.substituteTitle) ?: ""
+        val podcastTitle = (if (episode is PodcastEpisode) podcast?.title else Podcast.userPodcast.title) ?: ""
 
         val data = NotificationData(
             episodeUuid = episodeUuid,

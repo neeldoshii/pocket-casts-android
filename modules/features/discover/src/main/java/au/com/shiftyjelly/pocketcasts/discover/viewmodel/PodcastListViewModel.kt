@@ -2,7 +2,7 @@ package au.com.shiftyjelly.pocketcasts.discover.viewmodel
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.repositories.colors.ColorManager
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
@@ -23,6 +23,7 @@ import io.reactivex.rxkotlin.addTo
 import io.reactivex.rxkotlin.combineLatest
 import io.reactivex.rxkotlin.subscribeBy
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.rxMaybe
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -134,7 +135,11 @@ class PodcastListViewModel @Inject constructor(
 
     fun findOrDownloadEpisode(discoverEpisode: DiscoverEpisode, success: (episode: PodcastEpisode) -> Unit) {
         podcastManager.findOrDownloadPodcastRx(discoverEpisode.podcast_uuid)
-            .flatMapMaybe { episodeManager.findByUuidRx(discoverEpisode.uuid) }
+            .flatMapMaybe {
+                rxMaybe {
+                    episodeManager.findByUuid(discoverEpisode.uuid)
+                }
+            }
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
             .subscribeBy(
@@ -151,11 +156,11 @@ class PodcastListViewModel @Inject constructor(
     }
 
     fun playEpisode(episode: PodcastEpisode) {
-        playbackManager.playNow(episode, forceStream = true, playbackSource = AnalyticsSource.DISCOVER_PODCAST_LIST)
+        playbackManager.playNow(episode, forceStream = true, sourceView = SourceView.DISCOVER_PODCAST_LIST)
     }
 
     fun stopPlayback() {
-        playbackManager.stopAsync(playbackSource = AnalyticsSource.DISCOVER_PODCAST_LIST)
+        playbackManager.stopAsync(sourceView = SourceView.DISCOVER_PODCAST_LIST)
     }
 }
 

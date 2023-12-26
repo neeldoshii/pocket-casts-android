@@ -15,7 +15,8 @@ interface PlaylistManager {
     fun observeAll(): Flowable<List<Playlist>>
 
     fun findById(id: Long): Playlist?
-    fun findByUuid(playlistUuid: String): Playlist?
+    suspend fun findByUuid(playlistUuid: String): Playlist?
+    fun findByUuidSync(playlistUuid: String): Playlist?
     fun findByUuidRx(playlistUuid: String): Maybe<Playlist>
     fun observeByUuid(playlistUuid: String): Flowable<Playlist>
     fun observeByUuidAsList(playlistUuid: String): Flowable<List<Playlist>>
@@ -26,9 +27,6 @@ interface PlaylistManager {
     fun observeEpisodes(playlist: Playlist, episodeManager: EpisodeManager, playbackManager: PlaybackManager): Flowable<List<PodcastEpisode>>
 
     fun count(): Int
-    fun countEpisodesNotCompleted(playlist: Playlist, episodeManager: EpisodeManager, playbackManager: PlaybackManager): Int
-    fun countEpisodesDownloading(playlist: Playlist, episodeManager: EpisodeManager, playbackManager: PlaybackManager): Int
-    fun countEpisodesNotDownloaded(playlist: Playlist, episodeManager: EpisodeManager, playbackManager: PlaybackManager): Int
 
     fun createPlaylist(name: String, iconId: Int, draft: Boolean): Playlist
 

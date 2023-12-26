@@ -18,8 +18,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
-import androidx.wear.compose.foundation.lazy.ScalingLazyListState
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
@@ -28,9 +26,10 @@ import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
-import au.com.shiftyjelly.pocketcasts.wear.theme.theme
 import au.com.shiftyjelly.pocketcasts.wear.ui.component.EpisodeChip
 import au.com.shiftyjelly.pocketcasts.wear.ui.podcast.PodcastViewModel.UiState
+import com.google.android.horologist.compose.layout.ScalingLazyColumn
+import com.google.android.horologist.compose.layout.ScalingLazyColumnState
 
 object PodcastScreen {
     const val argument = "podcastUuid"
@@ -45,14 +44,14 @@ fun PodcastScreen(
     onEpisodeTap: (PodcastEpisode) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: PodcastViewModel = hiltViewModel(),
-    listState: ScalingLazyListState,
+    columnState: ScalingLazyColumnState,
 ) {
     when (val state = viewModel.uiState) {
         is UiState.Loaded -> Content(
             state = state,
             onEpisodeTap = onEpisodeTap,
             modifier = modifier,
-            listState = listState,
+            columnState = columnState,
         )
 
         UiState.Empty -> Unit // Do Nothing
@@ -64,7 +63,7 @@ private fun Content(
     state: UiState.Loaded,
     onEpisodeTap: (PodcastEpisode) -> Unit,
     modifier: Modifier = Modifier,
-    listState: ScalingLazyListState,
+    columnState: ScalingLazyColumnState,
 ) {
     val podcast = state.podcast ?: return
     Box(modifier = modifier.fillMaxWidth()) {
@@ -76,7 +75,7 @@ private fun Content(
 
         ScalingLazyColumn(
             modifier = modifier.fillMaxWidth(),
-            state = listState,
+            columnState = columnState,
         ) {
             item { Spacer(Modifier.height(4.dp)) }
             item {
@@ -91,7 +90,7 @@ private fun Content(
                     Text(
                         modifier = modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center,
-                        color = MaterialTheme.theme.colors.primaryText01,
+                        color = MaterialTheme.colors.onPrimary,
                         text = podcast.title,
                         style = MaterialTheme.typography.button
                     )
@@ -100,7 +99,7 @@ private fun Content(
                             .fillMaxWidth()
                             .padding(bottom = 8.dp),
                         textAlign = TextAlign.Center,
-                        color = MaterialTheme.theme.colors.primaryText02,
+                        color = MaterialTheme.colors.onSecondary,
                         text = podcast.author,
                         style = MaterialTheme.typography.body2.merge(
                             @Suppress("DEPRECATION")

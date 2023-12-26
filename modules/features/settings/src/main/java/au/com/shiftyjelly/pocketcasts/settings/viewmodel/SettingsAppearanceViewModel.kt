@@ -7,13 +7,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.toLiveData
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
-import au.com.shiftyjelly.pocketcasts.analytics.BuildConfig
 import au.com.shiftyjelly.pocketcasts.models.to.SignInState
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.UserEpisodeManager
 import au.com.shiftyjelly.pocketcasts.repositories.user.UserManager
 import au.com.shiftyjelly.pocketcasts.ui.helper.AppIcon
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -29,8 +30,8 @@ class SettingsAppearanceViewModel @Inject constructor(
 
     val signInState: LiveData<SignInState> = userManager.getSignInState().toLiveData()
     val createAccountState = MutableLiveData<SettingsAppearanceState>().apply { value = SettingsAppearanceState.Empty }
-    val showArtworkOnLockScreen = MutableLiveData(settings.showArtworkOnLockScreen())
-    val useEmbeddedArtwork = MutableLiveData(settings.getUseEmbeddedArtwork())
+    val showArtworkOnLockScreen = settings.showArtworkOnLockScreen.flow
+    val useEmbeddedArtwork = settings.useEmbeddedArtwork.flow
 
     var changeThemeType: Pair<Theme.ThemeType?, Theme.ThemeType?> = Pair(null, null)
     var changeAppIconType: Pair<AppIcon.AppIconType?, AppIcon.AppIconType?> = Pair(null, null)
@@ -65,7 +66,7 @@ class SettingsAppearanceViewModel @Inject constructor(
 
     fun loadThemesAndIcons() {
         createAccountState.postValue(SettingsAppearanceState.ThemesAndIconsLoading)
-        val appIcons = if (BuildConfig.ADD_PATRON_ENABLED) {
+        val appIcons = if (FeatureFlag.isEnabled(Feature.ADD_PATRON_ENABLED)) {
             appIcon.allAppIconTypes.toList()
         } else {
             appIcon.allAppIconTypes.toList().filterNot {
@@ -110,14 +111,22 @@ class SettingsAppearanceViewModel @Inject constructor(
                     AppIcon.AppIconType.PATRON_ROUND -> "patron_round"
                     AppIcon.AppIconType.PATRON_GLOW -> "patron_glow"
                     AppIcon.AppIconType.PATRON_DARK -> "patron_dark"
+                    AppIcon.AppIconType.PRIDE_2023 -> "pride_2023"
                 }
             )
         )
     }
 
+    fun updateUpNextDarkTheme(value: Boolean) {
+        settings.useDarkUpNextTheme.set(value)
+        analyticsTracker.track(
+            AnalyticsEvent.SETTINGS_APPEARANCE_USE_DARK_UP_NEXT_TOGGLED,
+            mapOf("enabled" to value)
+        )
+    }
+
     fun updateShowArtworkOnLockScreen(value: Boolean) {
-        settings.setShowArtworkOnLockScreen(value)
-        showArtworkOnLockScreen.value = value
+        settings.showArtworkOnLockScreen.set(value)
         analyticsTracker.track(
             AnalyticsEvent.SETTINGS_APPEARANCE_SHOW_ARTWORK_ON_LOCK_SCREEN_TOGGLED,
             mapOf("enabled" to value)
@@ -125,8 +134,7 @@ class SettingsAppearanceViewModel @Inject constructor(
     }
 
     fun updateUseEmbeddedArtwork(value: Boolean) {
-        settings.setUseEmbeddedArtwork(value)
-        useEmbeddedArtwork.value = value
+        settings.useEmbeddedArtwork.set(value)
         analyticsTracker.track(
             AnalyticsEvent.SETTINGS_APPEARANCE_USE_EMBEDDED_ARTWORK_TOGGLED,
             mapOf("enabled" to value)

@@ -93,6 +93,9 @@ sealed interface BaseEpisode {
     val isExemptFromAutoDownload: Boolean
         get() = autoDownloadStatus == PodcastEpisode.AUTO_DOWNLOAD_STATUS_IGNORE
 
+    val podcastOrSubstituteUuid: String
+        get() = if (this is PodcastEpisode) this.podcastUuid else Podcast.userPodcast.uuid
+
     // fall back to something that most podcasts are
     fun getFileExtension(): String {
         val fileType = fileType ?: return ".mp3"

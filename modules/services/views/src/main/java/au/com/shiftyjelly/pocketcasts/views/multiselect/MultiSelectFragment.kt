@@ -9,8 +9,8 @@ import androidx.lifecycle.toLiveData
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.SimpleItemAnimator
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
 import au.com.shiftyjelly.pocketcasts.views.databinding.FragmentMultiselectBinding
@@ -28,8 +28,9 @@ import au.com.shiftyjelly.pocketcasts.localization.R as LR
 class MultiSelectFragment : BaseFragment(), MultiSelectTouchCallback.ItemTouchHelperAdapter {
     @Inject lateinit var settings: Settings
     @Inject lateinit var analyticsTracker: AnalyticsTrackerWrapper
+    @Inject lateinit var multiSelectEpisodesHelper: MultiSelectEpisodesHelper
     private val source: String
-        get() = arguments?.getString(ARG_SOURCE) ?: AnalyticsSource.UNKNOWN.analyticsValue
+        get() = arguments?.getString(ARG_SOURCE) ?: SourceView.UNKNOWN.analyticsValue
 
     private val adapter = MultiSelectAdapter(editable = true, listener = null, dragListener = this::onItemStartDrag)
     private lateinit var itemTouchHelper: ItemTouchHelper
@@ -77,10 +78,10 @@ class MultiSelectFragment : BaseFragment(), MultiSelectTouchCallback.ItemTouchHe
 
         settings.multiSelectItemsObservable.toFlowable(BackpressureStrategy.LATEST).toLiveData()
             .observe(viewLifecycleOwner) {
-                val multiSelectActions: MutableList<Any> = MultiSelectAction.listFromIds(it).toMutableList()
+                val multiSelectActions: MutableList<Any> = MultiSelectEpisodeAction.listFromIds(it).toMutableList()
 
                 multiSelectActions.add(0, shortcutTitle)
-                multiSelectActions.add(MultiSelectToolbar.MAX_ICONS + 1, overflowTitle)
+                multiSelectActions.add(multiSelectEpisodesHelper.maxToolbarIcons + 1, overflowTitle)
 
                 items = multiSelectActions.toList()
                 adapter.submitList(multiSelectActions.toList())
@@ -111,7 +112,7 @@ class MultiSelectFragment : BaseFragment(), MultiSelectTouchCallback.ItemTouchHe
         // Make sure the titles are in the right spot
         listData.remove(shortcutTitle)
         listData.remove(overflowTitle)
-        listData.add(MultiSelectToolbar.MAX_ICONS + 1, overflowTitle)
+        listData.add(multiSelectEpisodesHelper.maxToolbarIcons + 1, overflowTitle)
         listData.add(0, shortcutTitle)
 
         adapter.submitList(listData)
@@ -131,7 +132,7 @@ class MultiSelectFragment : BaseFragment(), MultiSelectTouchCallback.ItemTouchHe
     }
 
     private fun sectionTitleAt(position: Int) =
-        if (position <= MultiSelectToolbar.MAX_ICONS) AnalyticsProp.Value.SHELF else AnalyticsProp.Value.OVERFLOW_MENU
+        if (position <= multiSelectEpisodesHelper.maxToolbarIcons) AnalyticsProp.Value.SHELF else AnalyticsProp.Value.OVERFLOW_MENU
 
     private fun trackRearrangeFinishedEvent() {
         analyticsTracker.track(
@@ -149,7 +150,7 @@ class MultiSelectFragment : BaseFragment(), MultiSelectTouchCallback.ItemTouchHe
             val newPosition = if (movedTo == AnalyticsProp.Value.SHELF) {
                 position - 1
             } else {
-                position - (items.indexOf(MultiSelectToolbar.MAX_ICONS) + 1)
+                position - (items.indexOf(multiSelectEpisodesHelper.maxToolbarIcons) + 1)
             }
             analyticsTracker.track(
                 AnalyticsEvent.MULTI_SELECT_VIEW_OVERFLOW_MENU_REARRANGE_ACTION_MOVED,
@@ -183,7 +184,7 @@ class MultiSelectFragment : BaseFragment(), MultiSelectTouchCallback.ItemTouchHe
 
     companion object {
         private const val ARG_SOURCE = "source"
-        fun newInstance(source: AnalyticsSource) = MultiSelectFragment().apply {
+        fun newInstance(source: SourceView) = MultiSelectFragment().apply {
             arguments = bundleOf(
                 ARG_SOURCE to source.analyticsValue,
             )

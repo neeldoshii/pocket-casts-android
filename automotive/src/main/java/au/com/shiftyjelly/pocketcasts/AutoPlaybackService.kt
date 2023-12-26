@@ -11,16 +11,19 @@ import androidx.annotation.StringRes
 import androidx.core.os.bundleOf
 import androidx.media.utils.MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_BROWSABLE
 import androidx.media.utils.MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.localization.helper.tryToLocalise
 import au.com.shiftyjelly.pocketcasts.models.to.SubscriptionStatus
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.repositories.di.ApplicationScope
 import au.com.shiftyjelly.pocketcasts.repositories.images.PodcastImage
 import au.com.shiftyjelly.pocketcasts.repositories.playback.EXTRA_CONTENT_STYLE_GROUP_TITLE_HINT
 import au.com.shiftyjelly.pocketcasts.repositories.playback.FOLDER_ROOT_PREFIX
 import au.com.shiftyjelly.pocketcasts.repositories.playback.MEDIA_ID_ROOT
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PODCASTS_ROOT
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackService
+import au.com.shiftyjelly.pocketcasts.repositories.playback.RECENT_ROOT
+import au.com.shiftyjelly.pocketcasts.repositories.playback.SUGGESTED_ROOT
 import au.com.shiftyjelly.pocketcasts.repositories.playback.auto.AutoConverter
 import au.com.shiftyjelly.pocketcasts.repositories.refresh.RefreshPodcastsTask
 import au.com.shiftyjelly.pocketcasts.servers.model.Discover
@@ -29,6 +32,7 @@ import au.com.shiftyjelly.pocketcasts.servers.model.ListType
 import au.com.shiftyjelly.pocketcasts.servers.model.transformWithRegion
 import au.com.shiftyjelly.pocketcasts.servers.server.ListRepository
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -47,10 +51,11 @@ const val PROFILE_LISTENING_HISTORY = "__LISTENING_HISTORY__"
 class AutoPlaybackService : PlaybackService() {
 
     @Inject lateinit var listSource: ListRepository
+    @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
 
     override fun onCreate() {
         super.onCreate()
-        RefreshPodcastsTask.runNow(this)
+        RefreshPodcastsTask.runNow(this, applicationScope)
 
         Log.d(Settings.LOG_TAG_AUTO, "Auto playback service created")
     }
@@ -59,7 +64,7 @@ class AutoPlaybackService : PlaybackService() {
         super.onDestroy()
         Log.d(Settings.LOG_TAG_AUTO, "Auto playback service destroyed")
 
-        playbackManager.pause(transientLoss = false, playbackSource = AnalyticsSource.AUTO_PAUSE)
+        playbackManager.pause(transientLoss = false, sourceView = SourceView.AUTO_PAUSE)
     }
 
     override fun onLoadChildren(parentId: String, result: Result<List<MediaBrowserCompat.MediaItem>>) {
@@ -77,6 +82,8 @@ class AutoPlaybackService : PlaybackService() {
                     PROFILE_FILES -> loadFilesChildren()
                     PROFILE_LISTENING_HISTORY -> loadListeningHistoryChildren()
                     PROFILE_STARRED -> loadStarredChildren()
+                    RECENT_ROOT -> loadRecentChildren()
+                    SUGGESTED_ROOT -> loadSuggestedChildren()
                     else -> {
                         if (parentId.startsWith(FOLDER_ROOT_PREFIX)) {
                             loadFolderPodcastsChildren(folderUuid = parentId.substring(FOLDER_ROOT_PREFIX.length))
@@ -127,9 +134,9 @@ class AutoPlaybackService : PlaybackService() {
 
     private fun loadProfileRoot(): List<MediaBrowserCompat.MediaItem> {
         return buildList {
-            // Add the user uploaded Files if they are a Plus subscriber
-            val isPlusUser = subscriptionManager.getCachedStatus() is SubscriptionStatus.Plus
-            if (isPlusUser) {
+            // Add the user uploaded Files if they are a paying subscriber
+            val isPaidUser = subscriptionManager.getCachedStatus() is SubscriptionStatus.Paid
+            if (isPaidUser) {
                 add(buildListMediaItem(id = PROFILE_FILES, title = LR.string.profile_navigation_files, drawable = IR.drawable.automotive_files))
             }
             add(buildListMediaItem(id = PROFILE_STARRED, title = LR.string.profile_navigation_starred, drawable = IR.drawable.automotive_filter_star))

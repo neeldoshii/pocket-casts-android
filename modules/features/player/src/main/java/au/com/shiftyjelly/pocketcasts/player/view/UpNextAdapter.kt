@@ -3,8 +3,10 @@ package au.com.shiftyjelly.pocketcasts.player.view
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.ColorFilter
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.annotation.ColorInt
 import androidx.core.view.isVisible
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.FragmentManager
@@ -30,7 +32,13 @@ import au.com.shiftyjelly.pocketcasts.repositories.podcast.EpisodeManager
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
 import au.com.shiftyjelly.pocketcasts.utils.extensions.dpToPx
-import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectHelper
+import au.com.shiftyjelly.pocketcasts.views.helper.SwipeButtonLayoutFactory
+import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectEpisodesHelper
+import com.airbnb.lottie.LottieAnimationView
+import com.airbnb.lottie.LottieProperty
+import com.airbnb.lottie.SimpleColorFilter
+import com.airbnb.lottie.model.KeyPath
+import com.airbnb.lottie.value.LottieValueCallback
 import timber.log.Timber
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
 
@@ -40,11 +48,12 @@ class UpNextAdapter(
     imageLoader: PodcastImageLoader,
     val episodeManager: EpisodeManager,
     val listener: UpNextListener,
-    val multiSelectHelper: MultiSelectHelper,
+    val multiSelectHelper: MultiSelectEpisodesHelper,
     val fragmentManager: FragmentManager,
     private val analyticsTracker: AnalyticsTrackerWrapper,
     private val upNextSource: UpNextSource,
-    private val settings: Settings
+    private val settings: Settings,
+    private val swipeButtonLayoutFactory: SwipeButtonLayoutFactory,
 ) : ListAdapter<Any, RecyclerView.ViewHolder>(UPNEXT_ADAPTER_DIFF) {
     private val dateFormatter = RelativeDateFormatter(context)
 
@@ -63,7 +72,14 @@ class UpNextAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
-            R.layout.adapter_up_next -> UpNextEpisodeViewHolder(DataBindingUtil.inflate(inflater, R.layout.adapter_up_next, parent, false), listener, dateFormatter, imageLoader, episodeManager)
+            R.layout.adapter_up_next -> UpNextEpisodeViewHolder(
+                binding = DataBindingUtil.inflate(inflater, R.layout.adapter_up_next, parent, false),
+                listener = listener,
+                dateFormatter = dateFormatter,
+                imageLoader = imageLoader,
+                episodeManager = episodeManager,
+                swipeButtonLayoutFactory = swipeButtonLayoutFactory,
+            )
             R.layout.adapter_up_next_footer -> HeaderViewHolder(DataBindingUtil.inflate(inflater, R.layout.adapter_up_next_footer, parent, false))
             R.layout.adapter_up_next_playing -> PlayingViewHolder(DataBindingUtil.inflate(inflater, R.layout.adapter_up_next_playing, parent, false))
             else -> throw IllegalStateException("Unknown view type in up next")
@@ -90,24 +106,28 @@ class UpNextAdapter(
     }
 
     private fun bindEpisodeRow(holder: UpNextEpisodeViewHolder, episode: BaseEpisode) {
-        holder.bind(episode, multiSelectHelper.isMultiSelecting, multiSelectHelper.isSelected(episode))
+        holder.bind(
+            episode = episode,
+            isMultiSelecting = multiSelectHelper.isMultiSelecting,
+            isSelected = multiSelectHelper.isSelected(episode),
+        )
 
         holder.binding.itemContainer.setOnClickListener {
             if (multiSelectHelper.isMultiSelecting) {
                 holder.binding.checkbox.isChecked = multiSelectHelper.toggle(episode)
             } else {
                 val podcastUuid = (episode as? PodcastEpisode)?.podcastUuid
-                val playOnTap = settings.getTapOnUpNextShouldPlay()
+                val playOnTap = settings.tapOnUpNextShouldPlay.value
                 trackUpNextEvent(AnalyticsEvent.UP_NEXT_QUEUE_EPISODE_TAPPED, mapOf(WILL_PLAY_KEY to playOnTap))
                 listener.onEpisodeActionsClick(episodeUuid = episode.uuid, podcastUuid = podcastUuid)
             }
         }
         holder.binding.itemContainer.setOnLongClickListener {
             if (multiSelectHelper.isMultiSelecting) {
-                multiSelectHelper.defaultLongPress(episode = episode, fragmentManager = fragmentManager)
+                multiSelectHelper.defaultLongPress(multiSelectable = episode, fragmentManager = fragmentManager)
             } else {
                 val podcastUuid = (episode as? PodcastEpisode)?.podcastUuid
-                val playOnLongPress = !settings.getTapOnUpNextShouldPlay()
+                val playOnLongPress = !settings.tapOnUpNextShouldPlay.value
                 trackUpNextEvent(AnalyticsEvent.UP_NEXT_QUEUE_EPISODE_LONG_PRESSED, mapOf(WILL_PLAY_KEY to playOnLongPress))
                 listener.onEpisodeActionsLongPress(episodeUuid = episode.uuid, podcastUuid = podcastUuid)
             }
@@ -152,16 +172,16 @@ class UpNextAdapter(
         }
 
         fun bind(playingState: UpNextPlaying) {
-            val titleColor = ThemeColor.playerContrast01(theme)
-            val tintColor = ThemeColor.playerContrast02(theme)
-
             Timber.d("Playing state episode: ${playingState.episode.playedUpTo}")
             binding.chapterProgress.theme = theme
-            binding.title.setTextColor(titleColor)
-            binding.info.setTextColor(tintColor)
             binding.playingState = playingState
-            binding.date.text = playingState.episode.getSummaryText(dateFormatter = dateFormatter, tintColor = tintColor, showDuration = false, context = binding.date.context)
-            binding.reorder.imageTintList = ColorStateList.valueOf(ThemeColor.playerContrast01(theme))
+            binding.date.text = playingState.episode.getSummaryText(
+                dateFormatter = dateFormatter,
+                tintColor = ThemeColor.primaryText02(theme),
+                showDuration = false,
+                context = binding.date.context
+            )
+            binding.reorder.imageTintList = ColorStateList.valueOf(ThemeColor.primaryInteractive01(theme))
             binding.executePendingBindings()
 
             if (loadedUuid != playingState.episode.uuid) {
@@ -170,8 +190,18 @@ class UpNextAdapter(
                 loadedUuid = playingState.episode.uuid
             }
 
-            binding.playingAnimation.isVisible = isPlaying
+            binding.playingAnimation.apply {
+                isVisible = isPlaying
+                applyColorFilter(ThemeColor.primaryText01(theme))
+            }
         }
+    }
+
+    private fun LottieAnimationView.applyColorFilter(@ColorInt color: Int) {
+        val filter = SimpleColorFilter(color)
+        val keyPath = KeyPath("**")
+        val callback = LottieValueCallback<ColorFilter>(filter)
+        addValueCallback(keyPath, LottieProperty.COLOR_FILTER, callback)
     }
 
     private fun trackUpNextEvent(event: AnalyticsEvent, props: Map<String, Any> = emptyMap()) {

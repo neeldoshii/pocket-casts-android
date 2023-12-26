@@ -8,8 +8,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.EpisodeAnalytics
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.db.AppDatabase
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.UserEpisode
@@ -98,6 +98,7 @@ interface UserEpisodeManager {
     suspend fun updateServerStatus(userEpisode: UserEpisode, serverStatus: UserEpisodeServerStatus)
     fun monitorUploads(context: Context)
     suspend fun removeCloudStatusFromFiles(playbackManager: PlaybackManager)
+    suspend fun markAsPlayed(episode: UserEpisode, playbackManager: PlaybackManager)
     suspend fun markAllAsPlayed(episodes: List<UserEpisode>, playbackManager: PlaybackManager)
     suspend fun markAllAsUnplayed(episodes: List<UserEpisode>)
 }
@@ -133,6 +134,7 @@ class UserEpisodeManagerImpl @Inject constructor(
 
     private val usageRelay = BehaviorRelay.create<Optional<FileAccount>>()
     private val userEpisodeDao = appDatabase.userEpisodeDao()
+    private val upNextDao = appDatabase.upNextDao()
 
     override fun monitorUploads(context: Context) {
         WorkManager.getInstance(context).getWorkInfosByTagLiveData(WORK_MANAGER_UPLOAD_TASK)
@@ -173,8 +175,8 @@ class UserEpisodeManagerImpl @Inject constructor(
     override suspend fun add(episode: UserEpisode, playbackManager: PlaybackManager) {
         userEpisodeDao.insert(episode)
 
-        if (settings.getCloudAddToUpNext()) {
-            playbackManager.playLast(episode = episode, source = AnalyticsSource.FILES)
+        if (settings.cloudAddToUpNext.value) {
+            playbackManager.playLast(episode = episode, source = SourceView.FILES)
         }
     }
 
@@ -188,7 +190,7 @@ class UserEpisodeManagerImpl @Inject constructor(
 
     override suspend fun delete(episode: UserEpisode, playbackManager: PlaybackManager) {
         deleteFilesForEpisode(episode)
-        playbackManager.removeEpisode(episodeToRemove = episode, source = AnalyticsSource.FILES, userInitiated = false)
+        playbackManager.removeEpisode(episodeToRemove = episode, source = SourceView.FILES, userInitiated = false)
         cancelUpload(episode)
         userEpisodeDao.delete(episode)
     }
@@ -202,7 +204,7 @@ class UserEpisodeManagerImpl @Inject constructor(
 
     override suspend fun deleteAll(episodes: List<UserEpisode>, playbackManager: PlaybackManager) {
         episodes.forEach {
-            playbackManager.removeEpisode(episodeToRemove = it, source = AnalyticsSource.FILES, userInitiated = false)
+            playbackManager.removeEpisode(episodeToRemove = it, source = SourceView.FILES, userInitiated = false)
         }
         userEpisodeDao.deleteAll(episodes)
     }
@@ -385,7 +387,7 @@ class UserEpisodeManagerImpl @Inject constructor(
                 val newEpisode = it.toUserEpisode()
                 add(newEpisode, playbackManager)
 
-                if (settings.getCloudAutoDownload() && subscriptionManager.getCachedStatus() is SubscriptionStatus.Plus) {
+                if (settings.cloudAutoDownload.value && subscriptionManager.getCachedStatus() is SubscriptionStatus.Paid) {
                     userEpisodeDao.updateAutoDownloadStatus(PodcastEpisode.AUTO_DOWNLOAD_STATUS_AUTO_DOWNLOADED, newEpisode.uuid)
                     newEpisode.autoDownloadStatus = PodcastEpisode.AUTO_DOWNLOAD_STATUS_AUTO_DOWNLOADED
                     downloadManager.addEpisodeToQueue(newEpisode, "cloud files sync", false)
@@ -398,9 +400,11 @@ class UserEpisodeManagerImpl @Inject constructor(
             val episode = findEpisodeByUuid(it)
             if (episode != null) {
                 if (!episode.isDownloaded) {
-                    // File deleted from server
-                    playbackManager.removeEpisode(episode, source = AnalyticsSource.UNKNOWN, userInitiated = false)
-                    userEpisodeDao.delete(episode)
+                    // Remove file not found on server only if it is not added to up-next to prevent it from being removed from up-next (Github Issue#356)
+                    if (!upNextDao.containsEpisode(episode.uuid)) {
+                        playbackManager.removeEpisode(episode, source = SourceView.UNKNOWN, userInitiated = false)
+                        userEpisodeDao.delete(episode)
+                    }
                 } else {
                     if (episode.serverStatus == UserEpisodeServerStatus.UPLOADED) {
                         userEpisodeDao.updateServerStatus(episode.uuid, UserEpisodeServerStatus.LOCAL)
@@ -551,7 +555,7 @@ class UserEpisodeManagerImpl @Inject constructor(
     }
 
     override suspend fun deletePlayedEpisodeIfReq(episode: UserEpisode, playbackManager: PlaybackManager) {
-        if (settings.getDeleteLocalFileAfterPlaying()) {
+        if (settings.deleteLocalFileAfterPlaying.value) {
             deleteFilesForEpisode(episode)
             userEpisodeDao.updateEpisodeStatus(episode.uuid, EpisodeStatusEnum.NOT_DOWNLOADED)
 
@@ -560,7 +564,7 @@ class UserEpisodeManagerImpl @Inject constructor(
             }
         }
 
-        if (settings.getDeleteCloudFileAfterPlaying() && episode.serverStatus == UserEpisodeServerStatus.UPLOADED) {
+        if (settings.deleteCloudFileAfterPlaying.value && episode.serverStatus == UserEpisodeServerStatus.UPLOADED) {
             removeFromCloud(episode)
             if (!episode.isDownloaded) {
                 delete(episode, playbackManager)
@@ -569,8 +573,8 @@ class UserEpisodeManagerImpl @Inject constructor(
     }
 
     override fun autoUploadToCloudIfReq(episode: UserEpisode) {
-        if (settings.getCloudAutoUpload() && subscriptionManager.getCachedStatus() is SubscriptionStatus.Plus) {
-            uploadToServer(episode, settings.getCloudOnlyWifi())
+        if (settings.cloudAutoUpload.value && subscriptionManager.getCachedStatus() is SubscriptionStatus.Paid) {
+            uploadToServer(episode, settings.cloudDownloadOnlyOnWifi.value)
         }
     }
 
@@ -592,9 +596,16 @@ class UserEpisodeManagerImpl @Inject constructor(
         return@withContext // Need this to satisfy the type for implicit return (which is dumb)
     }
 
+    override suspend fun markAsPlayed(episode: UserEpisode, playbackManager: PlaybackManager) {
+        playbackManager.removeEpisode(episode, source = SourceView.UNKNOWN, userInitiated = false)
+        deletePlayedEpisodeIfReq(episode, playbackManager)
+    }
+
     override suspend fun markAllAsPlayed(episodes: List<UserEpisode>, playbackManager: PlaybackManager) {
         episodes.map { it.uuid }.chunked(500).forEach { userEpisodeDao.updateAllPlayingStatus(it, System.currentTimeMillis(), EpisodePlayingStatus.COMPLETED) }
-        episodes.forEach { playbackManager.removeEpisode(it, source = AnalyticsSource.UNKNOWN, userInitiated = false) }
+        episodes.forEach {
+            markAsPlayed(it, playbackManager)
+        }
     }
 
     override suspend fun markAllAsUnplayed(episodes: List<UserEpisode>) {

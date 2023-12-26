@@ -1,6 +1,7 @@
 package au.com.shiftyjelly.pocketcasts.servers.sync
 
 import android.os.Build
+import au.com.shiftyjelly.pocketcasts.models.entity.Bookmark
 import au.com.shiftyjelly.pocketcasts.models.entity.Folder
 import au.com.shiftyjelly.pocketcasts.models.entity.Playlist
 import au.com.shiftyjelly.pocketcasts.models.entity.UserEpisode
@@ -12,18 +13,20 @@ import au.com.shiftyjelly.pocketcasts.preferences.RefreshToken
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.servers.di.SyncServerCache
 import au.com.shiftyjelly.pocketcasts.servers.di.SyncServerRetrofit
+import au.com.shiftyjelly.pocketcasts.servers.sync.bookmark.toBookmark
 import au.com.shiftyjelly.pocketcasts.servers.sync.forgotpassword.ForgotPasswordRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.forgotpassword.ForgotPasswordResponse
 import au.com.shiftyjelly.pocketcasts.servers.sync.history.HistoryYearResponse
 import au.com.shiftyjelly.pocketcasts.servers.sync.history.HistoryYearSyncRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.ExchangeSonosResponse
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginGoogleRequest
-import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginRequest
+import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginPocketCastsRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginTokenRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginTokenResponse
 import au.com.shiftyjelly.pocketcasts.servers.sync.register.RegisterRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.update.SyncUpdateResponse
 import au.com.shiftyjelly.pocketcasts.utils.extensions.parseIsoDate
+import com.pocketcasts.service.api.bookmarkRequest
 import io.reactivex.BackpressureStrategy
 import io.reactivex.Completable
 import io.reactivex.Flowable
@@ -61,8 +64,8 @@ open class SyncServerManager @Inject constructor(
     }
 
     suspend fun login(email: String, password: String): LoginTokenResponse {
-        val request = LoginRequest(email = email, password = password, scope = SCOPE_MOBILE)
-        return server.login(request)
+        val request = LoginPocketCastsRequest(email = email, password = password, scope = SCOPE_MOBILE)
+        return server.loginPocketCasts(request)
     }
 
     suspend fun loginGoogle(idToken: String): LoginTokenResponse {
@@ -70,8 +73,12 @@ open class SyncServerManager @Inject constructor(
         return server.loginGoogle(request)
     }
 
+    /**
+     * Update the access token using the refresh token.
+     * If any 4xx is returned the user should be logged out and asked to login.
+     */
     suspend fun loginToken(refreshToken: RefreshToken): LoginTokenResponse {
-        val request = LoginTokenRequest(refreshToken = refreshToken)
+        val request = LoginTokenRequest(refreshToken = refreshToken, scope = SCOPE_MOBILE)
         return server.loginToken(request)
     }
 
@@ -84,7 +91,7 @@ open class SyncServerManager @Inject constructor(
         return server.exchangeSonos(addBearer(token))
     }
 
-    fun emailChange(newEmail: String, password: String, token: AccessToken): Single<UserChangeResponse> {
+    suspend fun emailChange(newEmail: String, password: String, token: AccessToken): UserChangeResponse {
         val request = EmailChangeRequest(
             newEmail,
             password,
@@ -153,6 +160,10 @@ open class SyncServerManager @Inject constructor(
     fun getFilters(token: AccessToken): Single<List<Playlist>> =
         server.getFilterList(addBearer(token), buildBasicRequest())
             .map { response -> response.filters?.mapNotNull { it.toFilter() } ?: emptyList() }
+
+    suspend fun getBookmarks(token: AccessToken): List<Bookmark> {
+        return server.getBookmarkList(addBearer(token), bookmarkRequest {}).bookmarksList.map { it.toBookmark() }
+    }
 
     fun historySync(request: HistorySyncRequest, token: AccessToken): Single<HistorySyncResponse> =
         server.historySync(addBearer(token), request)

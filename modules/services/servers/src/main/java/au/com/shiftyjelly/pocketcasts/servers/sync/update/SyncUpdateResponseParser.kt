@@ -1,9 +1,11 @@
 package au.com.shiftyjelly.pocketcasts.servers.sync.update
 
+import au.com.shiftyjelly.pocketcasts.models.entity.Bookmark
 import au.com.shiftyjelly.pocketcasts.models.entity.Folder
 import au.com.shiftyjelly.pocketcasts.models.entity.Playlist
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodePlayingStatus
 import au.com.shiftyjelly.pocketcasts.models.type.PodcastsSortType
+import au.com.shiftyjelly.pocketcasts.models.type.SyncStatus
 import au.com.shiftyjelly.pocketcasts.servers.extensions.nextBooleanOrDefault
 import au.com.shiftyjelly.pocketcasts.servers.extensions.nextBooleanOrNull
 import au.com.shiftyjelly.pocketcasts.servers.extensions.nextDoubleOrNull
@@ -11,6 +13,8 @@ import au.com.shiftyjelly.pocketcasts.servers.extensions.nextIntOrDefault
 import au.com.shiftyjelly.pocketcasts.servers.extensions.nextIntOrNull
 import au.com.shiftyjelly.pocketcasts.servers.extensions.nextStringOrNull
 import au.com.shiftyjelly.pocketcasts.utils.extensions.parseIsoDate
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlagWrapper
 import com.squareup.moshi.FromJson
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonReader
@@ -23,9 +27,9 @@ import retrofit2.HttpException
 import retrofit2.Response
 import java.util.Date
 
-class UserNotLoggedInException : Exception()
-
-class SyncUpdateResponseParser : JsonAdapter<SyncUpdateResponse>() {
+class SyncUpdateResponseParser(
+    private val featureFlagWrapper: FeatureFlagWrapper,
+) : JsonAdapter<SyncUpdateResponse>() {
 
     @ToJson
     override fun toJson(writer: JsonWriter, value: SyncUpdateResponse?) {}
@@ -87,6 +91,11 @@ class SyncUpdateResponseParser : JsonAdapter<SyncUpdateResponse>() {
             "UserFolder" -> readFolder(reader, response)
             "UserPodcast" -> readPodcast(reader, response)
             "UserEpisode" -> readEpisode(reader, response)
+            "UserBookmark" -> if (featureFlagWrapper.isEnabled(Feature.BOOKMARKS_ENABLED)) {
+                readBookmark(reader, response)
+            } else {
+                reader.skipValue()
+            }
             null -> throw Exception("No type found for field")
             else -> reader.skipValue()
         }
@@ -215,6 +224,44 @@ class SyncUpdateResponseParser : JsonAdapter<SyncUpdateResponse>() {
                 syncModified = 0
             )
             response.folders.add(folder)
+        }
+    }
+
+    private fun readBookmark(reader: JsonReader, response: SyncUpdateResponse) {
+        var uuid: String? = null
+        var podcastUuid: String? = null
+        var episodeUuid: String? = null
+        var time: Int? = null
+        var title: String? = null
+        var deleted: Boolean? = null
+        var createdAt: Date? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "bookmark_uuid" -> uuid = reader.nextString()
+                "podcast_uuid" -> podcastUuid = reader.nextString()
+                "episode_uuid" -> episodeUuid = reader.nextString()
+                "time" -> time = reader.nextIntOrNull()
+                "title" -> title = reader.nextString()
+                "is_deleted" -> deleted = reader.nextBooleanOrNull()
+                "created_at" -> createdAt = reader.nextStringOrNull()?.parseIsoDate()
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+
+        if (uuid != null && podcastUuid != null && episodeUuid != null && time != null && title != null && createdAt != null) {
+            val bookmark = Bookmark(
+                uuid = uuid,
+                podcastUuid = podcastUuid,
+                episodeUuid = episodeUuid,
+                timeSecs = time,
+                title = title,
+                deleted = deleted ?: false,
+                createdAt = createdAt,
+                syncStatus = SyncStatus.SYNCED
+            )
+            response.bookmarks.add(bookmark)
         }
     }
 }

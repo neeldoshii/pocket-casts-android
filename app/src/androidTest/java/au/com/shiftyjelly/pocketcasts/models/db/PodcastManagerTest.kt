@@ -5,7 +5,9 @@ import androidx.test.internal.runner.junit4.AndroidJUnit4ClassRunner
 import androidx.test.platform.app.InstrumentationRegistry
 import au.com.shiftyjelly.pocketcasts.models.db.dao.PodcastDao
 import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
+import au.com.shiftyjelly.pocketcasts.models.to.PodcastGrouping
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.preferences.UserSetting
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.EpisodeManager
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.PlaylistManager
@@ -18,6 +20,8 @@ import au.com.shiftyjelly.pocketcasts.servers.podcast.PodcastCacheServerManager
 import au.com.shiftyjelly.pocketcasts.servers.refresh.RefreshServerManager
 import au.com.shiftyjelly.pocketcasts.utils.Optional
 import io.reactivex.Single
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -42,7 +46,12 @@ class PodcastManagerTest {
 
         val episodeManager = mock<EpisodeManager>()
         val playlistManager = mock<PlaylistManager>()
-        val settings = mock<Settings>()
+
+        val settings = mock<Settings> {
+            on { podcastGroupingDefault } doReturn UserSetting.Mock(PodcastGrouping.None, mock())
+            on { showArchivedDefault } doReturn UserSetting.Mock(false, mock())
+        }
+
         val syncManagerSignedOut = mock<SyncManager> {
             on { isLoggedIn() } doReturn false
         }
@@ -52,7 +61,7 @@ class PodcastManagerTest {
 
         val application = context
         val podcastCacheServer = mock<PodcastCacheServerManager> {
-            on { getPodcast(uuid, 0, 3, 1500) } doReturn Single.just(Podcast(uuid))
+            on { getPodcast(uuid) } doReturn Single.just(Podcast(uuid))
         }
         val staticServerManager = mock<StaticServerManager> {
             on { getColorsSingle(uuid) } doReturn Single.just(Optional.empty())
@@ -63,8 +72,30 @@ class PodcastManagerTest {
         val refreshServerManager = mock<RefreshServerManager> {}
         val subscribeManager = SubscribeManager(appDatabase, podcastCacheServer, staticServerManager, syncManagerSignedOut, application, settings)
         podcastDao = appDatabase.podcastDao()
-        podcastManagerSignedOut = PodcastManagerImpl(episodeManager, playlistManager, settings, application, subscribeManager, podcastCacheServer, refreshServerManager, syncManagerSignedOut, appDatabase)
-        podcastManagerSignedIn = PodcastManagerImpl(episodeManager, playlistManager, settings, application, subscribeManager, podcastCacheServer, refreshServerManager, syncManagerSignedIn, appDatabase)
+        podcastManagerSignedOut = PodcastManagerImpl(
+            episodeManager = episodeManager,
+            playlistManager = playlistManager,
+            settings = settings,
+            context = application,
+            subscribeManager = subscribeManager,
+            cacheServerManager = podcastCacheServer,
+            refreshServerManager = refreshServerManager,
+            syncManager = syncManagerSignedOut,
+            appDatabase = appDatabase,
+            applicationScope = CoroutineScope(Dispatchers.Default),
+        )
+        podcastManagerSignedIn = PodcastManagerImpl(
+            episodeManager = episodeManager,
+            playlistManager = playlistManager,
+            settings = settings,
+            context = application,
+            subscribeManager = subscribeManager,
+            cacheServerManager = podcastCacheServer,
+            refreshServerManager = refreshServerManager,
+            syncManager = syncManagerSignedIn,
+            applicationScope = CoroutineScope(Dispatchers.Default),
+            appDatabase = appDatabase
+        )
     }
 
     @After

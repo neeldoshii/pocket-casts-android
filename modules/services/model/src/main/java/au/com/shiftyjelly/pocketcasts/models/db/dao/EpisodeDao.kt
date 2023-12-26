@@ -1,13 +1,12 @@
 package au.com.shiftyjelly.pocketcasts.models.db.dao
 
-import androidx.lifecycle.LiveData
-import androidx.paging.DataSource
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RawQuery
+import androidx.room.Transaction
 import androidx.room.Update
 import androidx.sqlite.db.SupportSQLiteQuery
 import au.com.shiftyjelly.pocketcasts.models.db.AppDatabase
@@ -39,58 +38,78 @@ abstract class EpisodeDao {
     abstract fun observeCount(query: SupportSQLiteQuery): Flowable<Int>
 
     @Query("SELECT * FROM podcast_episodes WHERE uuid = :uuid")
-    abstract fun findByUuid(uuid: String): PodcastEpisode?
+    abstract fun findByUuidSync(uuid: String): PodcastEpisode?
+
+    @Query("SELECT * FROM podcast_episodes WHERE uuid = :uuid")
+    abstract suspend fun findByUuid(uuid: String): PodcastEpisode?
 
     @Query("SELECT * FROM podcast_episodes WHERE uuid = :uuid")
     abstract fun findByUuidRx(uuid: String): Maybe<PodcastEpisode>
 
     @Query("SELECT * FROM podcast_episodes WHERE uuid = :uuid")
-    abstract fun observeByUuid(uuid: String): Flow<PodcastEpisode>
+    abstract fun observeByUuid(uuid: String): Flow<PodcastEpisode?>
 
-    @Query("SELECT * FROM podcast_episodes WHERE download_task_id IS NOT NULL")
-    abstract fun observeDownloadingEpisodes(): LiveData<List<PodcastEpisode>>
-
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE download_task_id IS NOT NULL")
     abstract fun observeDownloadingEpisodesRx(): Flowable<List<PodcastEpisode>>
 
-    @Query("SELECT * FROM podcast_episodes WHERE uuid IN (:uuids)")
-    abstract fun findByUuids(uuids: List<String>): List<PodcastEpisode>
-
     @Query("SELECT * FROM podcast_episodes WHERE UPPER(title) = UPPER(:query) LIMIT 1")
-    abstract fun findFirstBySearchQuery(query: String): PodcastEpisode?
+    abstract suspend fun findFirstBySearchQuery(query: String): PodcastEpisode?
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE last_playback_interaction_sync_status <> 1 AND last_playback_interaction_date IS NOT NULL ORDER BY last_playback_interaction_date DESC LIMIT 1000")
     abstract fun findEpisodesForHistorySync(): List<PodcastEpisode>
 
-    @Query("SELECT * FROM podcast_episodes")
-    abstract fun findAll(): DataSource.Factory<Int, PodcastEpisode>
-
-    @Query("SELECT * FROM podcast_episodes WHERE playing_status = :episodePlayingStatus AND podcast_id = :podcastUuid")
-    abstract fun findByEpisodePlayingStatus(podcastUuid: String, episodePlayingStatus: EpisodePlayingStatus): List<PodcastEpisode>
-
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE playing_status = :episodePlayingStatus AND archived = :archived AND podcast_id = :podcastUuid")
     abstract fun findByEpisodePlayingAndArchiveStatus(podcastUuid: String, episodePlayingStatus: EpisodePlayingStatus, archived: Boolean): List<PodcastEpisode>
 
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY UPPER(title) ASC")
     abstract fun findByPodcastOrderTitleAsc(podcastUuid: String): List<PodcastEpisode>
 
+    @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY UPPER(title) ASC")
+    abstract suspend fun findByPodcastOrderTitleAscSuspend(podcastUuid: String): List<PodcastEpisode>
+
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY UPPER(title) DESC")
     abstract fun findByPodcastOrderTitleDesc(podcastUuid: String): List<PodcastEpisode>
 
+    @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY UPPER(title) DESC")
+    abstract suspend fun findByPodcastOrderTitleDescSuspend(podcastUuid: String): List<PodcastEpisode>
+
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY published_date ASC")
     abstract fun findByPodcastOrderPublishedDateAsc(podcastUuid: String): List<PodcastEpisode>
 
+    @Transaction
+    @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY published_date ASC")
+    abstract suspend fun findByPodcastOrderPublishedDateAscSuspend(podcastUuid: String): List<PodcastEpisode>
+
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY published_date DESC")
     abstract fun findByPodcastOrderPublishedDateDesc(podcastUuid: String): List<PodcastEpisode>
+
+    @Transaction
+    @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY published_date DESC")
+    abstract suspend fun findByPodcastOrderPublishedDateDescSuspend(podcastUuid: String): List<PodcastEpisode>
 
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid AND playing_status != 2 AND archived = 0 ORDER BY published_date DESC LIMIT 1")
     abstract fun findLatestUnfinishedEpisodeByPodcast(podcastUuid: String): PodcastEpisode?
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY duration ASC")
     abstract fun findByPodcastOrderDurationAsc(podcastUuid: String): List<PodcastEpisode>
 
+    @Transaction
+    @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY duration ASC")
+    abstract suspend fun findByPodcastOrderDurationAscSuspend(podcastUuid: String): List<PodcastEpisode>
+
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY duration DESC")
     abstract fun findByPodcastOrderDurationDesc(podcastUuid: String): List<PodcastEpisode>
+
+    @Transaction
+    @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY duration DESC")
+    abstract suspend fun findByPodcastOrderDurationDescSuspend(podcastUuid: String): List<PodcastEpisode>
 
     // Find new episodes to display in notifications.
     @Query(
@@ -104,26 +123,29 @@ abstract class EpisodeDao {
     )
     abstract fun findNotificationEpisodes(date: Date, playingStatus: Int = EpisodePlayingStatus.NOT_PLAYED.ordinal): List<PodcastEpisode>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY UPPER(title) ASC")
     abstract fun observeByPodcastOrderTitleAsc(podcastUuid: String): Flowable<List<PodcastEpisode>>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY UPPER(title) DESC")
     abstract fun observeByPodcastOrderTitleDesc(podcastUuid: String): Flowable<List<PodcastEpisode>>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY published_date ASC")
     abstract fun observeByPodcastOrderPublishedDateAsc(podcastUuid: String): Flowable<List<PodcastEpisode>>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY published_date DESC")
     abstract fun observeByPodcastOrderPublishedDateDesc(podcastUuid: String): Flowable<List<PodcastEpisode>>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY duration ASC")
     abstract fun observeByPodcastOrderDurationAsc(podcastUuid: String): Flowable<List<PodcastEpisode>>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY duration DESC")
     abstract fun observeByPodcastOrderDurationDesc(podcastUuid: String): Flowable<List<PodcastEpisode>>
-
-    @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid AND playing_status != :playingStatus")
-    abstract fun findByPodcastAndNotPlayingStatus(podcastUuid: String, playingStatus: Int): List<PodcastEpisode>
 
     @Query("UPDATE podcast_episodes SET downloaded_error_details = NULL, episode_status = :episodeStatusNotDownloaded WHERE episode_status = :episodeStatusFailed")
     abstract fun clearAllDownloadErrors(episodeStatusNotDownloaded: EpisodeStatusEnum, episodeStatusFailed: EpisodeStatusEnum)
@@ -134,24 +156,31 @@ abstract class EpisodeDao {
     @Query("SELECT * FROM podcast_episodes WHERE podcast_id = :podcastUuid ORDER BY published_date DESC, added_date DESC LIMIT 1")
     abstract fun findLatestRx(podcastUuid: String): Maybe<PodcastEpisode>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE (download_task_id IS NOT NULL OR episode_status == :downloadEpisodeStatusEnum OR (episode_status == :failedEpisodeStatusEnum AND last_download_attempt_date > :failedDownloadCutoff AND archived == 0)) ORDER BY last_download_attempt_date DESC")
     abstract fun observeDownloadingEpisodesIncludingFailed(failedDownloadCutoff: Long, failedEpisodeStatusEnum: EpisodeStatusEnum = EpisodeStatusEnum.DOWNLOAD_FAILED, downloadEpisodeStatusEnum: EpisodeStatusEnum = EpisodeStatusEnum.DOWNLOADED): Flowable<List<PodcastEpisode>>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE (download_task_id IS NOT NULL AND episode_status == :notDownloaded)")
     abstract suspend fun findStaleDownloads(notDownloaded: EpisodeStatusEnum = EpisodeStatusEnum.NOT_DOWNLOADED): List<PodcastEpisode>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE episode_status == :downloadEpisodeStatusEnum ORDER BY last_download_attempt_date DESC")
     abstract fun observeDownloadedEpisodes(downloadEpisodeStatusEnum: EpisodeStatusEnum = EpisodeStatusEnum.DOWNLOADED): Flowable<List<PodcastEpisode>>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE starred = 1")
     abstract fun observeStarredEpisodes(): Flowable<List<PodcastEpisode>>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE starred = 1")
     abstract suspend fun findStarredEpisodes(): List<PodcastEpisode>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE last_playback_interaction_date IS NOT NULL AND last_playback_interaction_date > 0 ORDER BY last_playback_interaction_date DESC LIMIT 1000")
     abstract fun observePlaybackHistory(): Flowable<List<PodcastEpisode>>
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE last_playback_interaction_date IS NOT NULL AND last_playback_interaction_date > 0 ORDER BY last_playback_interaction_date DESC LIMIT 1000")
     abstract suspend fun findPlaybackHistoryEpisodes(): List<PodcastEpisode>
 
@@ -167,9 +196,6 @@ abstract class EpisodeDao {
     @Query("DELETE FROM podcast_episodes")
     abstract suspend fun deleteAll()
 
-    @Query("DELETE FROM podcast_episodes WHERE uuid = :uuid")
-    abstract fun deleteByUuid(uuid: String)
-
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract fun insert(episode: PodcastEpisode)
 
@@ -183,10 +209,10 @@ abstract class EpisodeDao {
     abstract fun updateSizeInBytes(sizeInBytes: Long, uuid: String)
 
     @Query("UPDATE podcast_episodes SET download_url = :url WHERE uuid = :uuid")
-    abstract fun updateDownloadUrl(url: String, uuid: String)
+    abstract suspend fun updateDownloadUrl(url: String, uuid: String)
 
     @Query("UPDATE podcast_episodes SET download_task_id = :taskId WHERE uuid = :uuid")
-    abstract fun updateDownloadTaskId(uuid: String, taskId: String?)
+    abstract suspend fun updateDownloadTaskId(uuid: String, taskId: String?)
 
     @Query("UPDATE podcast_episodes SET last_download_attempt_date = :lastDownloadAttemptDate WHERE uuid = :uuid")
     abstract fun updateLastDownloadAttemptDate(lastDownloadAttemptDate: Date, uuid: String)
@@ -198,10 +224,7 @@ abstract class EpisodeDao {
     abstract fun updateDownloadedFilePath(downloadedFilePath: String, uuid: String)
 
     @Query("UPDATE podcast_episodes SET auto_download_status = :autoDownloadStatus WHERE uuid = :uuid")
-    abstract fun updateAutoDownloadStatus(autoDownloadStatus: Int, uuid: String)
-
-    @Query("UPDATE podcast_episodes SET thumbnail_status = :thumbnailStatus WHERE uuid = :uuid")
-    abstract fun updateThumbnailStatus(thumbnailStatus: Int, uuid: String)
+    abstract suspend fun updateAutoDownloadStatus(autoDownloadStatus: Int, uuid: String)
 
     @Query("UPDATE podcast_episodes SET play_error_details = :playErrorDetails WHERE uuid = :uuid")
     abstract fun updatePlayErrorDetails(playErrorDetails: String?, uuid: String)
@@ -210,7 +233,7 @@ abstract class EpisodeDao {
     abstract fun updateDownloadErrorDetails(downloadErrorDetails: String?, uuid: String)
 
     @Query("UPDATE podcast_episodes SET episode_status = :episodeStatus WHERE uuid = :uuid")
-    abstract fun updateEpisodeStatus(episodeStatus: EpisodeStatusEnum, uuid: String)
+    abstract suspend fun updateEpisodeStatus(episodeStatus: EpisodeStatusEnum, uuid: String)
 
     @Query("UPDATE podcast_episodes SET episode_status = :episodeStatus")
     abstract fun updateAllEpisodeStatus(episodeStatus: EpisodeStatusEnum)
@@ -259,7 +282,7 @@ abstract class EpisodeDao {
     abstract fun findLatestEpisodeToPlay(): PodcastEpisode?
 
     @Query("UPDATE podcast_episodes SET starred = :starred, starred_modified = :modified WHERE uuid = :uuid")
-    abstract fun updateStarred(starred: Boolean, modified: Long, uuid: String)
+    abstract suspend fun updateStarred(starred: Boolean, modified: Long, uuid: String)
 
     @Query("UPDATE podcast_episodes SET starred = :starred, starred_modified = :modified WHERE uuid IN (:episodesUUIDs)")
     abstract suspend fun updateAllStarred(episodesUUIDs: List<String>, starred: Boolean, modified: Long)
@@ -294,6 +317,7 @@ abstract class EpisodeDao {
         return Integer.parseInt(firstResult)
     }
 
+    @Transaction
     @Query("SELECT * FROM podcast_episodes WHERE (playing_status_modified IS NOT NULL OR played_up_to_modified IS NOT NULL OR duration_modified IS NOT NULL OR archived_modified IS NOT NULL OR starred_modified IS NOT NULL) AND uuid IS NOT NULL LIMIT 2000")
     abstract fun findEpisodesToSync(): List<PodcastEpisode>
 
@@ -301,7 +325,7 @@ abstract class EpisodeDao {
     abstract fun findInactiveEpisodes(podcastUuid: String, inactiveDate: Date, inactiveTime: Long = inactiveDate.time): List<PodcastEpisode>
 
     @Query("UPDATE podcast_episodes SET archived = 1, archived_modified = :modified, last_archive_interaction_date = :modified WHERE uuid IN (:episodesUUIDs)")
-    abstract fun archiveAllInList(episodesUUIDs: List<String>, modified: Long)
+    abstract suspend fun archiveAllInList(episodesUUIDs: List<String>, modified: Long)
 
     @Query("UPDATE podcast_episodes SET archived = 0, archived_modified = :modified, last_archive_interaction_date = :modified WHERE uuid IN (:episodesUUIDs)")
     abstract fun unarchiveAllInList(episodesUUIDs: List<String>, modified: Long)
@@ -317,9 +341,13 @@ abstract class EpisodeDao {
 
     @Query(
         """
-        SELECT DISTINCT podcast_episodes.uuid as episodeId, COUNT(DISTINCT podcast_id) as numberOfPodcasts, SUM(played_up_to) as totalPlayedTime, 
+        SELECT DISTINCT podcast_episodes.uuid as episodeId, 
+        COUNT(DISTINCT podcast_id) as numberOfPodcasts,
+        COUNT(DISTINCT podcast_episodes.uuid) as numberOfEpisodes,
+        SUM(played_up_to) as totalPlayedTime, 
         SUBSTR(TRIM(podcasts.podcast_category),1,INSTR(trim(podcasts.podcast_category)||char(10),char(10))-1) as category,
-        podcasts.uuid as mostListenedPodcastId, podcasts.primary_color as mostListenedPodcastTintColor
+        podcasts.uuid as mostListenedPodcastId, 
+        podcasts.primary_color as mostListenedPodcastTintColor
         FROM podcast_episodes
         JOIN podcasts ON podcast_episodes.podcast_id = podcasts.uuid
         WHERE podcast_episodes.last_playback_interaction_date IS NOT NULL AND podcast_episodes.last_playback_interaction_date > :fromEpochMs AND podcast_episodes.last_playback_interaction_date < :toEpochMs
@@ -380,4 +408,24 @@ abstract class EpisodeDao {
         """
     )
     abstract suspend fun findEpisodesCountInListeningHistory(fromEpochMs: Long, toEpochMs: Long): Int
+
+    @Query(
+        """
+            SELECT COUNT(DISTINCT uuid) AS started FROM podcast_episodes
+            WHERE podcast_episodes.last_playback_interaction_date IS NOT NULL 
+            AND podcast_episodes.last_playback_interaction_date > :fromEpochMs AND podcast_episodes.last_playback_interaction_date < :toEpochMs
+        """
+    )
+    abstract suspend fun countEpisodesStarted(fromEpochMs: Long, toEpochMs: Long): Int
+
+    @Query(
+        """
+        SELECT COUNT(DISTINCT uuid) AS completed 
+        FROM podcast_episodes 
+        WHERE (playing_status = 2 OR played_up_to >= 0.9 * duration) 
+        AND podcast_episodes.last_playback_interaction_date IS NOT NULL 
+        AND podcast_episodes.last_playback_interaction_date > :fromEpochMs AND podcast_episodes.last_playback_interaction_date < :toEpochMs
+        """
+    )
+    abstract suspend fun countEpisodesCompleted(fromEpochMs: Long, toEpochMs: Long): Int
 }

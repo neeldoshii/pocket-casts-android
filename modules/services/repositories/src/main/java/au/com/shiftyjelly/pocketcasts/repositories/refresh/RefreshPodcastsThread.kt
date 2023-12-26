@@ -14,13 +14,15 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
 import androidx.work.ListenableWorker
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.localization.BuildConfig
 import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.models.to.RefreshState
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.preferences.model.AutoAddUpNextLimitBehaviour
 import au.com.shiftyjelly.pocketcasts.repositories.R
+import au.com.shiftyjelly.pocketcasts.repositories.bookmark.BookmarkManager
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
 import au.com.shiftyjelly.pocketcasts.repositories.file.FileStorage
 import au.com.shiftyjelly.pocketcasts.repositories.images.PodcastImageLoader
@@ -42,13 +44,15 @@ import au.com.shiftyjelly.pocketcasts.servers.RefreshResponse
 import au.com.shiftyjelly.pocketcasts.servers.ServerCallback
 import au.com.shiftyjelly.pocketcasts.servers.ServerManager
 import au.com.shiftyjelly.pocketcasts.servers.podcast.PodcastCacheServerManagerImpl
-import au.com.shiftyjelly.pocketcasts.servers.sync.update.UserNotLoggedInException
+import au.com.shiftyjelly.pocketcasts.servers.sync.exception.RefreshTokenExpiredException
 import au.com.shiftyjelly.pocketcasts.utils.Network
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlagWrapper
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import dagger.hilt.EntryPoint
 import dagger.hilt.EntryPoints
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.util.Date
@@ -57,6 +61,7 @@ import au.com.shiftyjelly.pocketcasts.localization.R as LR
 
 class RefreshPodcastsThread(
     private val context: Context,
+    private val applicationScope: CoroutineScope,
     private val runNow: Boolean
 ) {
 
@@ -66,6 +71,7 @@ class RefreshPodcastsThread(
         fun serverManager(): ServerManager
         fun podcastManager(): PodcastManager
         fun playlistManager(): PlaylistManager
+        fun bookmarkManager(): BookmarkManager
         fun statsManager(): StatsManager
         fun fileStorage(): FileStorage
         fun podcastCacheServerManager(): PodcastCacheServerManagerImpl
@@ -79,6 +85,7 @@ class RefreshPodcastsThread(
         fun notificationHelper(): NotificationHelper
         fun userManager(): UserManager
         fun syncManager(): SyncManager
+        fun featureFlagWrapper(): FeatureFlagWrapper
     }
 
     @Volatile
@@ -131,13 +138,8 @@ class RefreshPodcastsThread(
             Timber.e(e)
             LogBuffer.e(LogBuffer.TAG_BACKGROUND_TASKS, e, "Refresh failed")
 
-            if (e is SecurityException || e is UserNotLoggedInException) {
-                val exceptionType = when (e) {
-                    is SecurityException -> "SecurityException"
-                    is UserNotLoggedInException -> "UserNotLoggedInException"
-                    else -> "unexpected exception"
-                }
-                LogBuffer.e(LogBuffer.TAG_BACKGROUND_TASKS, "Signing out user because there was a $exceptionType")
+            if (e is RefreshTokenExpiredException) {
+                LogBuffer.e(LogBuffer.TAG_BACKGROUND_TASKS, "Signed out user because the refresh token has expired.")
 
                 val userManager = entryPoint.userManager()
                 val playbackManager = entryPoint.playbackManager()
@@ -241,10 +243,12 @@ class RefreshPodcastsThread(
 
         val sync = PodcastSyncProcess(
             context = context,
+            applicationScope = applicationScope,
             settings = entryPoint.settings(),
             episodeManager = entryPoint.episodeManager(),
             podcastManager = entryPoint.podcastManager(),
             playlistManager = entryPoint.playlistManager(),
+            bookmarkManager = entryPoint.bookmarkManager(),
             statsManager = entryPoint.statsManager(),
             fileStorage = entryPoint.fileStorage(),
             playbackManager = playbackManager,
@@ -253,6 +257,7 @@ class RefreshPodcastsThread(
             subscriptionManager = entryPoint.subscriptionManager(),
             folderManager = entryPoint.folderManager(),
             syncManager = entryPoint.syncManager(),
+            featureFlagWrapper = entryPoint.featureFlagWrapper()
         )
         val startTime = SystemClock.elapsedRealtime()
         val syncCompletable = sync.run()
@@ -261,7 +266,7 @@ class RefreshPodcastsThread(
         if (throwable != null) {
             LogBuffer.e(LogBuffer.TAG_BACKGROUND_TASKS, throwable, "SyncProcess: Sync failed")
 
-            if (throwable is UserNotLoggedInException) {
+            if (throwable is RefreshTokenExpiredException) {
                 LogBuffer.e(LogBuffer.TAG_BACKGROUND_TASKS, "Signing out user because server post failed to log in")
                 userManager.signOut(playbackManager, wasInitiatedByUser = false)
             } else {
@@ -330,21 +335,21 @@ class RefreshPodcastsThread(
         // and run through them one by one sorted by their publish date. They are added to up next as if the action
         // was run right as they were published magically
         runBlocking {
-            val upNextLimit = settings.getAutoAddUpNextLimit()
+            val upNextLimit = settings.autoAddUpNextLimit.value
             episodesToAddToUpNext.sortBy { it.second.publishedDate }
             episodesToAddToUpNext.forEach {
                 if (playbackManager.upNextQueue.queueEpisodes.size < upNextLimit) {
                     when (it.first) {
-                        AddToUpNext.Next -> playbackManager.playNext(it.second, source = AnalyticsSource.UNKNOWN, userInitiated = false)
-                        AddToUpNext.Last -> playbackManager.playLast(it.second, source = AnalyticsSource.UNKNOWN, userInitiated = false)
+                        AddToUpNext.Next -> playbackManager.playNext(it.second, source = SourceView.UNKNOWN, userInitiated = false)
+                        AddToUpNext.Last -> playbackManager.playLast(it.second, source = SourceView.UNKNOWN, userInitiated = false)
                     }
                 } else if (playbackManager.upNextQueue.queueEpisodes.size >= upNextLimit &&
-                    settings.getAutoAddUpNextLimitBehaviour() == Settings.AutoAddUpNextLimitBehaviour.ONLY_ADD_TO_TOP &&
+                    settings.autoAddUpNextLimitBehaviour.value == AutoAddUpNextLimitBehaviour.ONLY_ADD_TO_TOP &&
                     it.first == AddToUpNext.Next
                 ) {
-                    playbackManager.playNext(it.second, source = AnalyticsSource.UNKNOWN, userInitiated = false)
+                    playbackManager.playNext(it.second, source = SourceView.UNKNOWN, userInitiated = false)
                     playbackManager.upNextQueue.queueEpisodes.lastOrNull()?.let { lastEpisode ->
-                        playbackManager.removeEpisode(lastEpisode, source = AnalyticsSource.UNKNOWN, userInitiated = false)
+                        playbackManager.removeEpisode(lastEpisode, source = SourceView.UNKNOWN, userInitiated = false)
                     }
                 }
             }
@@ -538,11 +543,12 @@ class RefreshPodcastsThread(
 
             // Add sound and vibrations
             if (!isGroupNotification) {
-                val sound = settings.getNotificationSound()
+                val sound = settings.notificationSound.value.uri
                 if (sound != null) {
                     notification.sound = sound
                 }
-                if (settings.isNotificationVibrateOn()) {
+                val isVibrateOn = settings.notificationVibrate.value.isNotificationVibrateOn(context)
+                if (isVibrateOn) {
                     notification.defaults = notification.defaults or Notification.DEFAULT_VIBRATE
                 }
             }
@@ -627,11 +633,12 @@ class RefreshPodcastsThread(
             val summaryNotification = summaryBuilder.build()
 
             // Add sound and vibrations
-            val sound = settings.getNotificationSound()
+            val sound = settings.notificationSound.value.uri
             if (sound != null) {
                 summaryNotification.sound = sound
             }
-            if (settings.isNotificationVibrateOn()) {
+            val isVibrateOn = settings.notificationVibrate.value.isNotificationVibrateOn(context)
+            if (isVibrateOn) {
                 summaryNotification.defaults = summaryNotification.defaults or Notification.DEFAULT_VIBRATE
             }
 

@@ -3,7 +3,7 @@ package au.com.shiftyjelly.pocketcasts.models.db.dao
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
-import androidx.room.OnConflictStrategy.REPLACE
+import androidx.room.OnConflictStrategy.Companion.REPLACE
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
@@ -332,7 +332,7 @@ abstract class PodcastDao {
     abstract fun updateAllAutoDownloadStatus(autoDownloadStatus: Int)
 
     @Query("UPDATE podcasts SET show_notifications = :showNotifications")
-    abstract fun updateAllShowNotifications(showNotifications: Boolean)
+    abstract suspend fun updateAllShowNotifications(showNotifications: Boolean)
 
     @Query("UPDATE podcasts SET auto_download_status = :autoDownloadStatus WHERE uuid = :uuid")
     abstract fun updateAutoDownloadStatus(autoDownloadStatus: Int, uuid: String)
@@ -354,17 +354,17 @@ abstract class PodcastDao {
 
     @Query(
         """
-        SELECT DISTINCT podcast_episodes.uuid as episodeId, podcasts.uuid, podcasts.title, podcasts.author, podcasts.primary_color as tintColorForLightBg, podcasts.secondary_color as tintColorForDarkBg, SUM(podcast_episodes.played_up_to) as totalPlayedTime, COUNT(podcast_episodes.uuid) as numberOfPlayedEpisodes
-        FROM podcast_episodes
-        JOIN podcasts ON podcast_episodes.podcast_id = podcasts.uuid
-        WHERE podcast_episodes.last_playback_interaction_date IS NOT NULL AND podcast_episodes.last_playback_interaction_date > :fromEpochMs AND podcast_episodes.last_playback_interaction_date < :toEpochMs
-        GROUP BY podcast_id
-        ORDER BY totalPlayedTime DESC, numberOfPlayedEpisodes DESC
-        LIMIT :limit
+         SELECT DISTINCT podcast_episodes.uuid as episodeId, podcasts.uuid, podcasts.title, podcasts.author, podcasts.primary_color as tintColorForLightBg, podcasts.secondary_color as tintColorForDarkBg, SUM(podcast_episodes.played_up_to) as totalPlayedTime, COUNT(podcast_episodes.uuid) as numberOfPlayedEpisodes
+            FROM podcast_episodes
+            JOIN podcasts ON podcast_episodes.podcast_id = podcasts.uuid
+            WHERE podcast_episodes.last_playback_interaction_date IS NOT NULL AND podcast_episodes.last_playback_interaction_date > :fromEpochMs AND podcast_episodes.last_playback_interaction_date < :toEpochMs
+            GROUP BY podcast_id
+            ORDER BY totalPlayedTime DESC, numberOfPlayedEpisodes DESC
+            LIMIT :limit
         """
     )
     abstract suspend fun findTopPodcasts(fromEpochMs: Long, toEpochMs: Long, limit: Int): List<TopPodcast>
 
     @Query("SELECT * FROM podcasts ORDER BY random() LIMIT :limit")
-    abstract fun findRandomPodcasts(limit: Int): List<Podcast>
+    abstract suspend fun findRandomPodcasts(limit: Int): List<Podcast>
 }

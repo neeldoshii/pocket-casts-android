@@ -2,11 +2,11 @@ package au.com.shiftyjelly.pocketcasts.player.view
 
 import android.content.Context
 import android.os.Bundle
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.appcompat.view.ContextThemeWrapper
 import androidx.appcompat.widget.Toolbar
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
@@ -16,9 +16,9 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
 import au.com.shiftyjelly.pocketcasts.analytics.FirebaseAnalyticsTracker
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.entity.BaseEpisode
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeViewSource
 import au.com.shiftyjelly.pocketcasts.player.R
@@ -36,8 +36,10 @@ import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
 import au.com.shiftyjelly.pocketcasts.views.extensions.tintIcons
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
 import au.com.shiftyjelly.pocketcasts.views.helper.EpisodeItemTouchHelper
-import au.com.shiftyjelly.pocketcasts.views.helper.EpisodeItemTouchHelper.SwipeAction
 import au.com.shiftyjelly.pocketcasts.views.helper.EpisodeItemTouchHelper.SwipeSource
+import au.com.shiftyjelly.pocketcasts.views.helper.SwipeButtonLayoutFactory
+import au.com.shiftyjelly.pocketcasts.views.helper.SwipeButtonLayoutViewModel
+import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectEpisodesHelper
 import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectHelper
 import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectToolbar
 import au.com.shiftyjelly.pocketcasts.views.tour.TourStep
@@ -49,7 +51,6 @@ import javax.inject.Inject
 import kotlin.math.abs
 import au.com.shiftyjelly.pocketcasts.images.R as IR
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
-import au.com.shiftyjelly.pocketcasts.ui.R as UR
 import au.com.shiftyjelly.pocketcasts.views.R as VR
 
 @AndroidEntryPoint
@@ -57,7 +58,6 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
     companion object {
         private const val ARG_EMBEDDED = "embedded"
         private const val ARG_SOURCE = "source"
-        private const val ACTION_KEY = "action"
         private const val SOURCE_KEY = "source"
         private const val SELECT_ALL_KEY = "select_all"
         private const val DIRECTION_KEY = "direction"
@@ -77,12 +77,13 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
     @Inject lateinit var settings: Settings
     @Inject lateinit var episodeManager: EpisodeManager
     @Inject lateinit var playbackManager: PlaybackManager
-    @Inject lateinit var multiSelectHelper: MultiSelectHelper
+    @Inject lateinit var multiSelectHelper: MultiSelectEpisodesHelper
     @Inject lateinit var analyticsTracker: AnalyticsTrackerWrapper
 
     lateinit var adapter: UpNextAdapter
-    private val playbackSource = AnalyticsSource.UP_NEXT
+    private val sourceView = SourceView.UP_NEXT
     private val playerViewModel: PlayerViewModel by activityViewModels()
+    private val swipeButtonLayoutViewModel: SwipeButtonLayoutViewModel by activityViewModels()
     private var userRearrangingFrom: Int? = null
     private var userDraggingStart: Int? = null
     private var playingEpisodeAtStartOfDrag: String? = null
@@ -104,11 +105,69 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
         get() = arguments?.getString(ARG_SOURCE)?.let { UpNextSource.fromString(it) } ?: UpNextSource.UNKNOWN
 
     val overrideTheme: Theme.ThemeType
-        get() = if (Theme.isDark(context)) theme.activeTheme else Theme.ThemeType.DARK
+        get() = if (settings.useDarkUpNextTheme.value) Theme.ThemeType.DARK else theme.activeTheme
+
+    val multiSelectListener = object : MultiSelectHelper.Listener<BaseEpisode> {
+        override fun multiSelectSelectAll() {
+            trackUpNextEvent(
+                AnalyticsEvent.UP_NEXT_SELECT_ALL_TAPPED,
+                mapOf(SELECT_ALL_KEY to true)
+            )
+            multiSelectHelper.selectAllInList(upNextEpisodes)
+            adapter.notifyDataSetChanged()
+        }
+
+        override fun multiSelectSelectNone() {
+            trackUpNextEvent(
+                AnalyticsEvent.UP_NEXT_SELECT_ALL_TAPPED,
+                mapOf(SELECT_ALL_KEY to false)
+            )
+            multiSelectHelper.deselectAllInList(upNextEpisodes)
+            adapter.notifyDataSetChanged()
+        }
+
+        override fun multiSelectSelectAllUp(multiSelectable: BaseEpisode) {
+            val startIndex = upNextEpisodes.indexOf(multiSelectable)
+            if (startIndex > -1) {
+                val episodesAbove = upNextEpisodes.subList(0, startIndex + 1)
+                multiSelectHelper.selectAllInList(episodesAbove)
+            }
+
+            adapter.notifyDataSetChanged()
+        }
+
+        override fun multiSelectSelectAllDown(multiSelectable: BaseEpisode) {
+            val startIndex = upNextEpisodes.indexOf(multiSelectable)
+            if (startIndex > -1) {
+                val episodesBelow = upNextEpisodes.subList(startIndex, upNextEpisodes.size)
+                multiSelectHelper.selectAllInList(episodesBelow)
+            }
+
+            adapter.notifyDataSetChanged()
+        }
+
+        override fun multiDeselectAllBelow(multiSelectable: BaseEpisode) {
+            val startIndex = upNextEpisodes.indexOf(multiSelectable)
+            if (startIndex > -1) {
+                val episodesBelow = upNextEpisodes.subList(startIndex, upNextEpisodes.size)
+                multiSelectHelper.deselectAllInList(episodesBelow)
+            }
+            adapter.notifyDataSetChanged()
+        }
+
+        override fun multiDeselectAllAbove(multiSelectable: BaseEpisode) {
+            val startIndex = upNextEpisodes.indexOf(multiSelectable)
+            if (startIndex > -1) {
+                val episdesAbove = upNextEpisodes.subList(0, startIndex + 1)
+                multiSelectHelper.deselectAllInList(episdesAbove)
+            }
+            adapter.notifyDataSetChanged()
+        }
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        val themedContext = ContextThemeWrapper(activity, UR.style.ThemeDark)
-        val themedInflater = if (!Theme.isDark(context)) inflater.cloneInContext(themedContext) else inflater // If the theme is not dark we force it to ThemeDark
+        val themedContext = ContextThemeWrapper(activity, overrideTheme.resourceId)
+        val themedInflater = inflater.cloneInContext(themedContext)
         val binding = FragmentUpnextBinding.inflate(themedInflater, container, false).also {
             realBinding = it
         }
@@ -121,13 +180,14 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
         binding.recyclerView.adapter = null
         super.onDestroyView()
         multiSelectHelper.context = null
+        multiSelectHelper.listener = null
         realBinding = null
     }
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
         val imageLoader = PodcastImageLoaderThemed(context)
-        multiSelectHelper.source = AnalyticsSource.UP_NEXT
+        multiSelectHelper.source = SourceView.UP_NEXT
         adapter = UpNextAdapter(
             context = context,
             imageLoader = imageLoader,
@@ -137,13 +197,31 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
             fragmentManager = childFragmentManager,
             analyticsTracker = analyticsTracker,
             upNextSource = upNextSource,
-            settings = settings
+            settings = settings,
+            swipeButtonLayoutFactory = SwipeButtonLayoutFactory(
+                swipeButtonLayoutViewModel = swipeButtonLayoutViewModel,
+                onItemUpdated = this::clearViewAtPosition,
+                defaultUpNextSwipeAction = { settings.upNextSwipe.value },
+                context = context,
+                fragmentManager = parentFragmentManager,
+                swipeSource = SwipeSource.UP_NEXT,
+            ),
         )
         adapter.theme = overrideTheme
 
         if (!isEmbedded) {
             updateStatusAndNavColors()
             FirebaseAnalyticsTracker.openedUpNext()
+        }
+    }
+
+    private fun clearViewAtPosition(
+        @Suppress("UNUSED_PARAMETER") episode: BaseEpisode,
+        position: Int,
+    ) {
+        val recyclerView = realBinding?.recyclerView ?: return
+        recyclerView.findViewHolderForAdapterPosition(position)?.let {
+            episodeItemTouchHelper?.clearView(recyclerView, it)
         }
     }
 
@@ -186,6 +264,7 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
 
         playerViewModel.listDataLive.observe(viewLifecycleOwner) {
             adapter.isPlaying = it.podcastHeader.isPlaying
+            toolbar.menu.findItem(R.id.menu_select)?.isVisible = it.upNextEpisodes.isNotEmpty()
         }
 
         view.isClickable = true
@@ -195,7 +274,7 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
             attachToRecyclerView(recyclerView)
         }
 
-        episodeItemTouchHelper = EpisodeItemTouchHelper(this::moveToTop, this::moveToBottom, this::removeFromUpNext).apply {
+        episodeItemTouchHelper = EpisodeItemTouchHelper().apply {
             attachToRecyclerView(recyclerView)
         }
 
@@ -221,37 +300,7 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
 
             adapter.notifyDataSetChanged()
         }
-        multiSelectHelper.listener = object : MultiSelectHelper.Listener {
-            override fun multiSelectSelectAll() {
-                trackUpNextEvent(AnalyticsEvent.UP_NEXT_SELECT_ALL_TAPPED, mapOf(SELECT_ALL_KEY to true))
-                upNextEpisodes.forEach { multiSelectHelper.select(it) }
-                adapter.notifyDataSetChanged()
-            }
-
-            override fun multiSelectSelectNone() {
-                trackUpNextEvent(AnalyticsEvent.UP_NEXT_SELECT_ALL_TAPPED, mapOf(SELECT_ALL_KEY to false))
-                upNextEpisodes.forEach { multiSelectHelper.deselect(it) }
-                adapter.notifyDataSetChanged()
-            }
-
-            override fun multiSelectSelectAllUp(episode: BaseEpisode) {
-                val startIndex = upNextEpisodes.indexOf(episode)
-                if (startIndex > -1) {
-                    upNextEpisodes.subList(0, startIndex + 1).forEach { multiSelectHelper.select(it) }
-                }
-
-                adapter.notifyDataSetChanged()
-            }
-
-            override fun multiSelectSelectAllDown(episode: BaseEpisode) {
-                val startIndex = upNextEpisodes.indexOf(episode)
-                if (startIndex > -1) {
-                    upNextEpisodes.subList(startIndex, upNextEpisodes.size).forEach { multiSelectHelper.select(it) }
-                }
-
-                adapter.notifyDataSetChanged()
-            }
-        }
+        multiSelectHelper.listener = multiSelectListener
 
         multiSelectHelper.context = view.context
         multiSelectToolbar.setup(viewLifecycleOwner, multiSelectHelper, menuRes = VR.menu.menu_multiselect_upnext, fragmentManager = parentFragmentManager)
@@ -268,31 +317,16 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
         }
     }
 
-    fun moveToTop(episode: BaseEpisode, position: Int) {
-        val recyclerView = realBinding?.recyclerView ?: return
-        recyclerView.findViewHolderForAdapterPosition(position)?.let {
-            episodeItemTouchHelper?.clearView(recyclerView, it)
-        }
-        playbackManager.playEpisodesNext(episodes = listOf(episode), source = AnalyticsSource.UP_NEXT)
-        trackSwipeAction(SwipeAction.UP_NEXT_MOVE_TOP)
+    fun onExpanded() {
+        multiSelectHelper.listener = multiSelectListener
+        startTour()
     }
 
-    fun moveToBottom(episode: BaseEpisode, position: Int) {
-        val recyclerView = realBinding?.recyclerView ?: return
-        recyclerView.findViewHolderForAdapterPosition(position)?.let {
-            episodeItemTouchHelper?.clearView(recyclerView, it)
-        }
-        playbackManager.playEpisodesLast(episodes = listOf(episode), source = AnalyticsSource.UP_NEXT)
-        trackSwipeAction(SwipeAction.UP_NEXT_MOVE_BOTTOM)
+    fun onCollapsed() {
+        multiSelectHelper.listener = null
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    fun removeFromUpNext(episode: BaseEpisode, position: Int) {
-        onUpNextEpisodeRemove(position)
-        trackSwipeAction(SwipeAction.UP_NEXT_REMOVE)
-    }
-
-    fun startTour() {
+    private fun startTour() {
         val upNextTourView = realBinding?.upNextTourView ?: return
         if (settings.getSeenUpNextTour()) {
             (upNextTourView.parent as? ViewGroup)?.removeView(upNextTourView)
@@ -335,8 +369,8 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
     }
 
     override fun onEpisodeActionsClick(episodeUuid: String, podcastUuid: String?) {
-        if (settings.getTapOnUpNextShouldPlay()) {
-            playerViewModel.playEpisode(uuid = episodeUuid, playbackSource = playbackSource)
+        if (settings.tapOnUpNextShouldPlay.value) {
+            playerViewModel.playEpisode(uuid = episodeUuid, sourceView = sourceView)
         } else {
             (activity as? FragmentHostListener)?.openEpisodeDialog(
                 episodeUuid = episodeUuid,
@@ -348,7 +382,7 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
     }
 
     override fun onEpisodeActionsLongPress(episodeUuid: String, podcastUuid: String?) {
-        if (settings.getTapOnUpNextShouldPlay()) {
+        if (settings.tapOnUpNextShouldPlay.value) {
             (activity as? FragmentHostListener)?.openEpisodeDialog(
                 episodeUuid = episodeUuid,
                 source = EpisodeViewSource.UP_NEXT,
@@ -356,7 +390,7 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
                 forceDark = true
             )
         } else {
-            playerViewModel.playEpisode(uuid = episodeUuid, playbackSource = playbackSource)
+            playerViewModel.playEpisode(uuid = episodeUuid, sourceView = sourceView)
         }
     }
 
@@ -379,12 +413,6 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
         upNextItems = listData.toList()
 
         userRearrangingFrom = toPosition
-    }
-
-    override fun onUpNextEpisodeRemove(position: Int) {
-        (upNextItems.getOrNull(position) as? BaseEpisode)?.let {
-            playerViewModel.removeFromUpNext(it)
-        }
     }
 
     override fun onUpNextItemTouchHelperFinished(position: Int) {
@@ -418,16 +446,6 @@ class UpNextFragment : BaseFragment(), UpNextListener, UpNextTouchCallback.ItemT
     override fun onNowPlayingClick() {
         (activity as? FragmentHostListener)?.openPlayer()
         close()
-    }
-
-    private fun trackSwipeAction(swipeAction: SwipeAction) {
-        analyticsTracker.track(
-            AnalyticsEvent.EPISODE_SWIPE_ACTION_PERFORMED,
-            mapOf(
-                ACTION_KEY to swipeAction.analyticsValue,
-                SOURCE_KEY to SwipeSource.UP_NEXT.analyticsValue
-            )
-        )
     }
 
     private fun trackUpNextEvent(event: AnalyticsEvent, props: Map<String, Any> = emptyMap()) {

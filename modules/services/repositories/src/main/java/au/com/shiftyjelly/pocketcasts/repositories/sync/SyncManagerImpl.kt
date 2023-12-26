@@ -5,6 +5,7 @@ import android.content.Context
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
 import au.com.shiftyjelly.pocketcasts.analytics.TracksAnalyticsTracker
+import au.com.shiftyjelly.pocketcasts.models.entity.Bookmark
 import au.com.shiftyjelly.pocketcasts.models.entity.Playlist
 import au.com.shiftyjelly.pocketcasts.models.entity.UserEpisode
 import au.com.shiftyjelly.pocketcasts.models.to.HistorySyncRequest
@@ -35,6 +36,7 @@ import au.com.shiftyjelly.pocketcasts.servers.sync.SyncServerManager
 import au.com.shiftyjelly.pocketcasts.servers.sync.UpNextSyncRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.UpNextSyncResponse
 import au.com.shiftyjelly.pocketcasts.servers.sync.UserChangeResponse
+import au.com.shiftyjelly.pocketcasts.servers.sync.exception.RefreshTokenExpiredException
 import au.com.shiftyjelly.pocketcasts.servers.sync.history.HistoryYearResponse
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.ExchangeSonosResponse
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginTokenResponse
@@ -46,7 +48,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.rx2.rxSingle
 import retrofit2.HttpException
 import retrofit2.Response
 import timber.log.Timber
@@ -77,15 +79,16 @@ class SyncManagerImpl @Inject constructor(
 
 // Account
 
-    override fun emailChange(newEmail: String, password: String): Single<UserChangeResponse> =
-        getCacheTokenOrLoginRxSingle { token ->
+    override suspend fun emailChange(newEmail: String, password: String): UserChangeResponse {
+        val result = getCacheTokenOrLogin { token ->
             syncServerManager.emailChange(newEmail, password, token)
-        }.doOnSuccess {
-            if (it.success == true) {
-                syncAccountManager.setEmail(newEmail)
-                analyticsTracker.track(AnalyticsEvent.USER_EMAIL_UPDATED)
-            }
         }
+        if (result.success == true) {
+            syncAccountManager.setEmail(newEmail)
+            analyticsTracker.track(AnalyticsEvent.USER_EMAIL_UPDATED)
+        }
+        return result
+    }
 
     override fun deleteAccount(): Single<UserChangeResponse> =
         getCacheTokenOrLoginRxSingle { token ->
@@ -121,15 +124,15 @@ class SyncManagerImpl @Inject constructor(
     override fun getEmail(): String? =
         syncAccountManager.getEmail()
 
-    override suspend fun getAccessToken(account: Account): AccessToken? =
+    override suspend fun getAccessToken(account: Account): AccessToken =
         syncAccountManager.peekAccessToken(account)
             ?: fetchAccessToken(account)
 
     override fun getRefreshToken(): RefreshToken? =
         syncAccountManager.getRefreshToken()
 
-    private suspend fun fetchAccessToken(account: Account): AccessToken? {
-        val refreshToken = syncAccountManager.getRefreshToken(account) ?: return null
+    private suspend fun fetchAccessToken(account: Account): AccessToken {
+        val refreshToken = syncAccountManager.getRefreshToken(account) ?: throw RefreshTokenExpiredException()
         return try {
             val signInType = syncAccountManager.getSignInType(account)
             LogBuffer.i(LogBuffer.TAG_BACKGROUND_TASKS, "Fetching the access token, SignInType: $signInType")
@@ -146,7 +149,11 @@ class SyncManagerImpl @Inject constructor(
             tokenResponse.accessToken
         } catch (ex: Exception) {
             LogBuffer.e(LogBuffer.TAG_BACKGROUND_TASKS, ex, "Unable to fetch access token.")
-            null
+            if (isHttpClientError(ex)) {
+                throw RefreshTokenExpiredException()
+            } else {
+                throw ex
+            }
         }
     }
 
@@ -188,9 +195,6 @@ class SyncManagerImpl @Inject constructor(
         val loginResult = try {
             val response = loginFunction()
             val result = handleTokenResponse(loginIdentity = loginIdentity, response = response)
-
-            settings.setFullySignedOut(false)
-
             LoginResult.Success(result)
         } catch (ex: Exception) {
             Timber.e(ex, "Failed to sign in with Pocket Casts")
@@ -380,6 +384,12 @@ class SyncManagerImpl @Inject constructor(
             syncServerManager.getFilters(token)
         }
 
+    override suspend fun getBookmarks(): List<Bookmark> {
+        return getCacheTokenOrLogin { token ->
+            syncServerManager.getBookmarks(token)
+        }
+    }
+
     override suspend fun loadStats(): StatsBundle =
         getCacheTokenOrLogin { token ->
             syncServerManager.loadStats(token)
@@ -518,9 +528,8 @@ class SyncManagerImpl @Inject constructor(
 
     private fun <T : Any> getCacheTokenOrLoginRxSingle(serverCall: (token: AccessToken) -> Single<T>): Single<T> {
         if (isLoggedIn()) {
-            return Single.fromCallable {
-                runBlocking { syncAccountManager.getAccessToken() }
-                    ?: throw RuntimeException("Failed to get token")
+            return rxSingle {
+                syncAccountManager.getAccessToken() ?: throw RuntimeException("Failed to get token")
             }
                 .flatMap { token -> serverCall(token) }
                 // refresh invalid
@@ -546,10 +555,8 @@ class SyncManagerImpl @Inject constructor(
 
     private fun refreshToken(): Single<AccessToken> {
         syncAccountManager.invalidateAccessToken()
-        return Single.fromCallable {
-            runBlocking {
-                syncAccountManager.getAccessToken()
-            } ?: throw RuntimeException("Failed to get token")
+        return rxSingle {
+            syncAccountManager.getAccessToken() ?: throw RuntimeException("Failed to get token")
         }.doOnError {
             LogBuffer.e(LogBuffer.TAG_BACKGROUND_TASKS, it, "Refresh token threw an error.")
         }
@@ -562,6 +569,10 @@ class SyncManagerImpl @Inject constructor(
 
     private fun isHttpUnauthorized(throwable: Throwable?): Boolean {
         return throwable is HttpException && throwable.code() == 401
+    }
+
+    private fun isHttpClientError(throwable: Throwable?): Boolean {
+        return throwable is HttpException && throwable.code() in 400..499
     }
 
     private fun handleTokenResponse(loginIdentity: LoginIdentity, response: LoginTokenResponse): AuthResultModel {
@@ -577,6 +588,7 @@ class SyncManagerImpl @Inject constructor(
         )
         isLoggedInObservable.accept(true)
 
+        settings.setFullySignedOut(false)
         settings.setLastModified(null)
 
         return AuthResultModel(

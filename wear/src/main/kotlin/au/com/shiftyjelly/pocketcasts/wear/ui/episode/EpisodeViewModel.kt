@@ -11,31 +11,38 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.palette.graphics.Palette
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
-import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.EpisodeAnalytics
+import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.entity.BaseEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.UserEpisode
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodePlayingStatus
+import au.com.shiftyjelly.pocketcasts.models.type.EpisodeStatusEnum
 import au.com.shiftyjelly.pocketcasts.profile.cloud.AddFileActivity
+import au.com.shiftyjelly.pocketcasts.repositories.di.ApplicationScope
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
 import au.com.shiftyjelly.pocketcasts.repositories.playback.UpNextPosition
 import au.com.shiftyjelly.pocketcasts.repositories.playback.UpNextQueue
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.EpisodeManager
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.PodcastManager
-import au.com.shiftyjelly.pocketcasts.servers.ServerShowNotesManager
+import au.com.shiftyjelly.pocketcasts.repositories.shownotes.ShowNotesManager
+import au.com.shiftyjelly.pocketcasts.servers.shownotes.ShowNotesState
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
 import au.com.shiftyjelly.pocketcasts.utils.extensions.combine6
+import au.com.shiftyjelly.pocketcasts.wear.ui.player.AudioOutputSelectorHelper
 import au.com.shiftyjelly.pocketcasts.wear.ui.player.StreamingConfirmationScreen
 import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -43,11 +50,14 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.asFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import javax.inject.Inject
@@ -56,6 +66,7 @@ import kotlin.coroutines.suspendCoroutine
 import au.com.shiftyjelly.pocketcasts.images.R as IR
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class EpisodeViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -64,12 +75,14 @@ class EpisodeViewModel @Inject constructor(
     private val episodeManager: EpisodeManager,
     private val playbackManager: PlaybackManager,
     private val podcastManager: PodcastManager,
-    private val showNotesManager: ServerShowNotesManager,
+    private val showNotesManager: ShowNotesManager,
     theme: Theme,
     @ApplicationContext appContext: Context,
+    @ApplicationScope private val coroutineScope: CoroutineScope,
+    private val audioOutputSelectorHelper: AudioOutputSelectorHelper,
 ) : AndroidViewModel(appContext as Application) {
-
-    private val analyticsSource = AnalyticsSource.WATCH_EPISODE_DETAILS
+    private var playAttempt: Job? = null
+    private val sourceView = SourceView.EPISODE_DETAILS
 
     sealed class State {
         data class Loaded(
@@ -79,8 +92,15 @@ class EpisodeViewModel @Inject constructor(
             val inUpNext: Boolean,
             val tintColor: Color?,
             val downloadProgress: Float? = null,
-            val showNotes: String? = null,
-        ) : State()
+            val showNotesState: ShowNotesState,
+            val errorData: ErrorData?,
+        ) : State() {
+            data class ErrorData(
+                @StringRes val errorTitleRes: Int,
+                @DrawableRes val errorIconRes: Int,
+                val errorDescription: String?,
+            )
+        }
 
         object Empty : State()
     }
@@ -138,8 +158,17 @@ class EpisodeViewModel @Inject constructor(
         }
 
         val showNotesFlow = episodeFlow
-            .filterIsInstance<PodcastEpisode>() // user episodes don't have show notes
-            .map { showNotesManager.loadShowNotes(it.uuid) }
+            .flatMapLatest {
+                when (it) {
+                    is PodcastEpisode -> showNotesManager.loadShowNotesFlow(
+                        podcastUuid = it.podcastUuid,
+                        episodeUuid = it.uuid,
+                    )
+
+                    // user episodes don't have show notes
+                    is UserEpisode -> flowOf(ShowNotesState.NotFound)
+                }
+            }
 
         stateFlow = combine6(
             episodeFlow,
@@ -148,8 +177,9 @@ class EpisodeViewModel @Inject constructor(
             isPlayingEpisodeFlow.onStart { emit(false) },
             inUpNextFlow,
             downloadProgressFlow.onStart<Float?> { emit(null) },
-            showNotesFlow.onStart { emit(null) }
-        ) { episode, podcast, isPlayingEpisode, upNext, downloadProgress, showNotes ->
+            showNotesFlow
+        ) { episode, podcast, isPlayingEpisode, upNext, downloadProgress, showNotesState ->
+
             State.Loaded(
                 episode = episode,
                 podcast = podcast,
@@ -157,9 +187,46 @@ class EpisodeViewModel @Inject constructor(
                 downloadProgress = downloadProgress,
                 inUpNext = isInUpNext(upNext, episode),
                 tintColor = getTintColor(episode, podcast, theme),
-                showNotes = showNotes,
+                showNotesState = showNotesState,
+                errorData = getErrorData(episode),
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), State.Empty)
+    }
+
+    private fun getErrorData(episode: BaseEpisode): State.Loaded.ErrorData? {
+        val errorTitleRes: Int?
+        val errorIconRes: Int?
+        var errorDescription: String? = null
+
+        val episodeStatus = episode.episodeStatus
+        if (episode.playErrorDetails == null) {
+            errorTitleRes = when (episodeStatus) {
+                EpisodeStatusEnum.DOWNLOAD_FAILED -> LR.string.podcasts_download_failed
+                EpisodeStatusEnum.WAITING_FOR_WIFI -> LR.string.podcasts_download_wifi
+                EpisodeStatusEnum.WAITING_FOR_POWER -> LR.string.podcasts_download_power
+                else -> null
+            }
+            if (episodeStatus == EpisodeStatusEnum.DOWNLOAD_FAILED) {
+                errorDescription = episode.downloadErrorDetails
+            }
+            errorIconRes = when (episodeStatus) {
+                EpisodeStatusEnum.DOWNLOAD_FAILED -> IR.drawable.ic_failedwarning
+                EpisodeStatusEnum.WAITING_FOR_WIFI -> IR.drawable.ic_waitingforwifi
+                EpisodeStatusEnum.WAITING_FOR_POWER -> IR.drawable.ic_waitingforpower
+                else -> null
+            }
+        } else {
+            errorIconRes = IR.drawable.ic_play_all
+            errorTitleRes = LR.string.podcast_episode_playback_error
+            errorDescription = episode.playErrorDetails
+        }
+        return errorTitleRes?.let {
+            State.Loaded.ErrorData(
+                errorTitleRes = it,
+                errorIconRes = errorIconRes ?: IR.drawable.ic_failedwarning,
+                errorDescription = errorDescription
+            )
+        }
     }
 
     private fun isInUpNext(
@@ -192,9 +259,9 @@ class EpisodeViewModel @Inject constructor(
 
     fun downloadEpisode() {
         val episode = (stateFlow.value as? State.Loaded)?.episode ?: return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val fromString = "wear episode screen"
-
+            clearErrors(episode)
             if (episode.downloadTaskId != null) {
                 when (episode) {
                     is PodcastEpisode -> {
@@ -207,7 +274,7 @@ class EpisodeViewModel @Inject constructor(
 
                 episodeAnalytics.trackEvent(
                     event = AnalyticsEvent.EPISODE_DOWNLOAD_CANCELLED,
-                    source = analyticsSource,
+                    source = sourceView,
                     uuid = episode.uuid
                 )
             } else if (!episode.isDownloaded) {
@@ -217,9 +284,17 @@ class EpisodeViewModel @Inject constructor(
 
                 episodeAnalytics.trackEvent(
                     event = AnalyticsEvent.EPISODE_DOWNLOAD_QUEUED,
-                    source = analyticsSource,
+                    source = sourceView,
                     uuid = episode.uuid
                 )
+            }
+        }
+    }
+
+    private suspend fun clearErrors(episode: BaseEpisode) {
+        withContext(Dispatchers.IO) {
+            if (episode is PodcastEpisode) {
+                episodeManager.clearDownloadError(episode)
             }
             episodeManager.clearPlaybackError(episode)
         }
@@ -236,7 +311,7 @@ class EpisodeViewModel @Inject constructor(
             )
             episodeAnalytics.trackEvent(
                 event = AnalyticsEvent.EPISODE_DOWNLOAD_DELETED,
-                source = analyticsSource,
+                source = sourceView,
                 uuid = episode.uuid,
             )
         }
@@ -246,14 +321,18 @@ class EpisodeViewModel @Inject constructor(
         if (playbackManager.shouldWarnAboutPlayback()) {
             showStreamingConfirmation()
         } else {
-            play()
+            playAttempt?.cancel()
+
+            playAttempt = coroutineScope.launch { audioOutputSelectorHelper.attemptPlay(::play) }
         }
     }
 
     fun onStreamingConfirmationResult(result: StreamingConfirmationScreen.Result) {
         val confirmedStreaming = result == StreamingConfirmationScreen.Result.CONFIRMED
         if (confirmedStreaming && !playbackManager.isPlaying()) {
-            play()
+            playAttempt?.cancel()
+
+            playAttempt = coroutineScope.launch { audioOutputSelectorHelper.attemptPlay(::play) }
         }
     }
 
@@ -261,9 +340,12 @@ class EpisodeViewModel @Inject constructor(
         val episode = (stateFlow.value as? State.Loaded)?.episode
             ?: return
         viewModelScope.launch {
+            if (episode.playErrorDetails != null || episode.downloadErrorDetails != null) {
+                clearErrors(episode)
+            }
             playbackManager.playNowSync(
                 episode = episode,
-                playbackSource = analyticsSource,
+                sourceView = sourceView,
             )
             _showNowPlaying.emit(true)
         }
@@ -274,8 +356,10 @@ class EpisodeViewModel @Inject constructor(
             Timber.e("Attempted to pause when not playing")
             return
         }
+        playAttempt?.cancel()
+
         viewModelScope.launch {
-            playbackManager.pause(playbackSource = analyticsSource)
+            playbackManager.pause(sourceView = sourceView)
         }
     }
 
@@ -285,7 +369,7 @@ class EpisodeViewModel @Inject constructor(
             playbackManager.play(
                 upNextPosition = upNextPosition,
                 episode = state.episode,
-                source = analyticsSource
+                source = sourceView
             )
         }
     }
@@ -294,7 +378,7 @@ class EpisodeViewModel @Inject constructor(
         val state = stateFlow.value as? State.Loaded ?: return
         playbackManager.removeEpisode(
             episodeToRemove = state.episode,
-            source = AnalyticsSource.WATCH_EPISODE_DETAILS
+            source = SourceView.EPISODE_DETAILS
         )
     }
 
@@ -328,14 +412,14 @@ class EpisodeViewModel @Inject constructor(
                 episodeManager.unarchive(episode)
                 episodeAnalytics.trackEvent(
                     AnalyticsEvent.EPISODE_UNARCHIVED,
-                    analyticsSource,
+                    sourceView,
                     episode.uuid
                 )
             } else {
                 episodeManager.archive(episode, playbackManager)
                 episodeAnalytics.trackEvent(
                     AnalyticsEvent.EPISODE_ARCHIVED,
-                    analyticsSource,
+                    sourceView,
                     episode.uuid
                 )
             }
@@ -349,10 +433,9 @@ class EpisodeViewModel @Inject constructor(
                 return
             }
 
-            episodeManager.toggleStarEpisodeAsync(episode)
-            val event =
-                if (episode.isStarred) AnalyticsEvent.EPISODE_UNSTARRED else AnalyticsEvent.EPISODE_STARRED
-            episodeAnalytics.trackEvent(event, analyticsSource, episode.uuid)
+            viewModelScope.launch {
+                episodeManager.toggleStarEpisode(episode, sourceView)
+            }
         }
     }
 
@@ -366,7 +449,7 @@ class EpisodeViewModel @Inject constructor(
                     episodeManager.markAsPlayed(episode, playbackManager, podcastManager)
                     AnalyticsEvent.EPISODE_MARKED_AS_PLAYED
                 }
-                episodeAnalytics.trackEvent(event, analyticsSource, episode.uuid)
+                episodeAnalytics.trackEvent(event, sourceView, episode.uuid)
             }
         }
     }
