@@ -3,6 +3,7 @@ package au.com.shiftyjelly.pocketcasts.search
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.asFlow
 import au.com.shiftyjelly.pocketcasts.compose.AppThemeWithBackground
 import au.com.shiftyjelly.pocketcasts.compose.components.HorizontalDivider
+import au.com.shiftyjelly.pocketcasts.compose.components.PodcastItem
 import au.com.shiftyjelly.pocketcasts.compose.components.TextH20
 import au.com.shiftyjelly.pocketcasts.compose.components.TextP50
 import au.com.shiftyjelly.pocketcasts.compose.components.TextP60
@@ -48,9 +50,11 @@ import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.to.EpisodeItem
 import au.com.shiftyjelly.pocketcasts.models.to.FolderItem
 import au.com.shiftyjelly.pocketcasts.models.type.PodcastsSortType
+import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.search.SearchResultsFragment.Companion.ResultsType
 import au.com.shiftyjelly.pocketcasts.search.component.SearchEpisodeItem
 import au.com.shiftyjelly.pocketcasts.search.component.SearchFolderItem
+import au.com.shiftyjelly.pocketcasts.search.component.SearchFolderRow
 import au.com.shiftyjelly.pocketcasts.search.component.SearchPodcastItem
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.utils.extensions.parseIsoDate
@@ -69,6 +73,7 @@ fun SearchInlineResultsPage(
     onShowAllCLick: (ResultsType) -> Unit,
     onScroll: () -> Unit,
     onlySearchRemote: Boolean,
+    settings: Settings,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -79,15 +84,24 @@ fun SearchInlineResultsPage(
             is SearchState.Results -> {
                 val result = state as SearchState.Results
                 if (result.error == null || !onlySearchRemote || result.loading) {
-                    SearchResultsView(
-                        state = state as SearchState.Results,
-                        onEpisodeClick = onEpisodeClick,
-                        onPodcastClick = onPodcastClick,
-                        onFolderClick = onFolderClick,
-                        onShowAllCLick = onShowAllCLick,
-                        onSubscribeToPodcast = { viewModel.onSubscribeToPodcast(it) },
-                        onScroll = onScroll,
-                    )
+                    if (settings.isFeatureFlagSearchImprovementsEnabled()) {
+                        SearchResultsView(
+                            state = state as SearchState.Results,
+                            onEpisodeClick = onEpisodeClick,
+                            onPodcastClick = onPodcastClick,
+                            onFolderClick = onFolderClick,
+                            onShowAllCLick = onShowAllCLick,
+                            onSubscribeToPodcast = { viewModel.onSubscribeToPodcast(it) },
+                            onScroll = onScroll,
+                        )
+                    } else {
+                        OldSearchResultsView(
+                            state = state as SearchState.Results,
+                            onPodcastClick = onPodcastClick,
+                            onFolderClick = onFolderClick,
+                            onScroll = onScroll,
+                        )
+                    }
                 } else {
                     SearchFailedView()
                 }
@@ -246,6 +260,55 @@ private fun SearchResultsHeaderView(
 }
 
 @Composable
+private fun OldSearchResultsView(
+    state: SearchState.Results,
+    onPodcastClick: (Podcast) -> Unit,
+    onFolderClick: (Folder, List<Podcast>) -> Unit,
+    onScroll: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                onScroll()
+                return super.onPostFling(consumed, available)
+            }
+        }
+    }
+    LazyColumn(
+        modifier = modifier
+            .background(color = MaterialTheme.theme.colors.primaryUi01)
+            .nestedScroll(nestedScrollConnection)
+    ) {
+        items(
+            items = state.podcasts,
+            key = { it.adapterId }
+        ) { folderItem ->
+            when (folderItem) {
+                is FolderItem.Folder -> {
+                    SearchFolderRow(
+                        folderItem.folder,
+                        folderItem.podcasts,
+                        onClick = { onFolderClick(folderItem.folder, folderItem.podcasts) }
+                    )
+                }
+
+                is FolderItem.Podcast -> {
+                    PodcastItem(
+                        podcast = folderItem.podcast,
+                        subscribed = folderItem.podcast.isSubscribed,
+                        showSubscribed = true,
+                        onClick = { onPodcastClick(folderItem.podcast) },
+                        modifier = Modifier
+                            .background(color = MaterialTheme.theme.colors.primaryUi01)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun NoResultsView() {
     MessageView(
         imageResId = R.drawable.search,
@@ -298,7 +361,7 @@ private fun MessageView(
 
 @Preview
 @Composable
-private fun SearchResultsViewPreview(
+fun SearchResultsViewPreview(
     @PreviewParameter(ThemePreviewParameterProvider::class) themeType: Theme.ThemeType,
 ) {
     AppThemeWithBackground(themeType) {
@@ -352,7 +415,49 @@ private fun SearchResultsViewPreview(
 
 @Preview
 @Composable
-private fun NoResultsViewPreview(
+fun OldSearchResultsViewPreview(
+    @PreviewParameter(ThemePreviewParameterProvider::class) themeType: Theme.ThemeType,
+) {
+    AppThemeWithBackground(themeType) {
+        OldSearchResultsView(
+            state = SearchState.Results(
+                podcasts = listOf(
+                    FolderItem.Folder(
+                        folder = Folder(
+                            uuid = UUID.randomUUID().toString(),
+                            name = "Folder",
+                            color = 0,
+                            addedDate = Date(),
+                            podcastsSortType = PodcastsSortType.NAME_A_TO_Z,
+                            deleted = false,
+                            syncModified = 0L,
+                            sortPosition = 0,
+                        ),
+                        podcasts = listOf(Podcast(uuid = UUID.randomUUID().toString()))
+                    ),
+                    FolderItem.Podcast(
+                        podcast = Podcast(
+                            uuid = UUID.randomUUID().toString(),
+                            title = "Podcast",
+                            author = "Author"
+                        )
+                    )
+                ),
+                episodes = emptyList(),
+                error = null,
+                loading = false,
+                searchTerm = ""
+            ),
+            onPodcastClick = {},
+            onFolderClick = { _, _ -> },
+            onScroll = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+fun NoResultsViewPreview(
     @PreviewParameter(ThemePreviewParameterProvider::class) themeType: Theme.ThemeType,
 ) {
     AppThemeWithBackground(themeType) {
@@ -362,7 +467,7 @@ private fun NoResultsViewPreview(
 
 @Preview
 @Composable
-private fun SearchFailedViewPreview(
+fun SearchFailedViewPreview(
     @PreviewParameter(ThemePreviewParameterProvider::class) themeType: Theme.ThemeType,
 ) {
     AppThemeWithBackground(themeType) {

@@ -5,13 +5,12 @@ import android.content.Context
 import android.view.View
 import androidx.fragment.app.Fragment
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
+import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.EpisodeAnalytics
-import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.entity.BaseEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.UserEpisode
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
-import au.com.shiftyjelly.pocketcasts.repositories.di.ApplicationScope
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.EpisodeManager
@@ -23,7 +22,8 @@ import au.com.shiftyjelly.pocketcasts.views.dialog.ConfirmationDialog
 import au.com.shiftyjelly.pocketcasts.views.fragments.BatteryRestrictionsSettingsFragment
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.qualifiers.ActivityContext
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.util.*
 import javax.inject.Inject
@@ -39,17 +39,17 @@ class WarningsHelper @Inject constructor(
     private val systemBatteryRestrictions: SystemBatteryRestrictions,
     private val userEpisodeManager: UserEpisodeManager,
     private val episodeAnalytics: EpisodeAnalytics,
-    @ApplicationScope private val applicationScope: CoroutineScope,
 ) {
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun streamingWarningDialog(
         episode: BaseEpisode,
         snackbarParentView: View? = null,
-        sourceView: SourceView
+        playbackSource: AnalyticsSource
     ): ConfirmationDialog {
         return streamingWarningDialog(onConfirm = {
-            applicationScope.launch {
-                playbackManager.playNow(episode = episode, forceStream = true, sourceView = sourceView)
+            GlobalScope.launch {
+                playbackManager.playNow(episode = episode, forceStream = true, playbackSource = playbackSource)
                 showBatteryWarningSnackbarIfAppropriate(snackbarParentView)
             }
         })
@@ -79,7 +79,7 @@ class WarningsHelper @Inject constructor(
             .setOnSecondary { download(episodeUuid, waitForWifi = true, from = from) }
     }
 
-    fun uploadWarning(episodeUuid: String, source: SourceView): ConfirmationDialog {
+    fun uploadWarning(episodeUuid: String, source: AnalyticsSource): ConfirmationDialog {
         val titleRes =
             if (Network.isWifiConnection(activity)) LR.string.profile_cloud_upload_warning_title_metered_wifi else LR.string.profile_cloud_upload_warning_title_on_wifi
         return ConfirmationDialog()
@@ -92,8 +92,9 @@ class WarningsHelper @Inject constructor(
             .setOnSecondary { upload(episodeUuid, waitForWifi = true, source = source) }
     }
 
-    private fun upload(episodeUuid: String, waitForWifi: Boolean, source: SourceView) {
-        applicationScope.launch {
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun upload(episodeUuid: String, waitForWifi: Boolean, source: AnalyticsSource) {
+        GlobalScope.launch {
             episodeManager.findEpisodeByUuid(episodeUuid)?.let {
                 if (it !is UserEpisode) return@let
 
@@ -105,8 +106,9 @@ class WarningsHelper @Inject constructor(
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     private fun download(episodeUuid: String, waitForWifi: Boolean, from: String) {
-        applicationScope.launch {
+        GlobalScope.launch {
             episodeManager.findEpisodeByUuid(episodeUuid)?.let {
                 if (it.isDownloading) {
                     episodeManager.stopDownloadAndCleanUp(episodeUuid, from)

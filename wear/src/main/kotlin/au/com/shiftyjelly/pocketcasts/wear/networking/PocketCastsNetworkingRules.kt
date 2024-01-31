@@ -2,12 +2,14 @@ package au.com.shiftyjelly.pocketcasts.wear.networking
 
 import androidx.annotation.VisibleForTesting
 import au.com.shiftyjelly.pocketcasts.BuildConfig
-import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
+import com.google.android.horologist.networks.ExperimentalHorologistNetworksApi
 import com.google.android.horologist.networks.data.NetworkInfo
 import com.google.android.horologist.networks.data.NetworkStatus
 import com.google.android.horologist.networks.data.NetworkType
 import com.google.android.horologist.networks.data.Networks
 import com.google.android.horologist.networks.data.RequestType
+import com.google.android.horologist.networks.data.RequestType.MediaRequest.Companion.DownloadRequest
+import com.google.android.horologist.networks.data.RequestType.MediaRequest.Companion.LiveRequest
 import com.google.android.horologist.networks.rules.Allow
 import com.google.android.horologist.networks.rules.NetworkingRules
 import com.google.android.horologist.networks.rules.RequestCheck
@@ -47,30 +49,33 @@ object PocketCastsNetworkingRules : NetworkingRules {
             else -> {
                 networks.networks.prefer(NetworkType.Wifi)
             }
-        }.also { networkStatus ->
-            LogBuffer.i(LogBuffer.TAG_BACKGROUND_TASKS, "Preferred network according to networking rules: $networkStatus")
         }
 
     private fun getPreferredNetworkForMedia(
         networks: Networks,
         requestType: RequestType,
     ): NetworkStatus? {
-        val mediaRequestType = (requestType as? RequestType.MediaRequest)?.type
-        return when (mediaRequestType) {
-            // Not sure if MediaRequestType.Live will occur for us, but if it does, it seems like it
-            // should be treated the same as a MediaRequestType.Stream
-            RequestType.MediaRequest.MediaRequestType.Live,
-            RequestType.MediaRequest.MediaRequestType.Stream ->
-                // For streaming, assume a low bandwidth and use power efficient BT if available
+
+        // Always prefer Wifi if it is active
+        networks.networks.firstOrNull { it.networkInfo is NetworkInfo.Wifi }?.let {
+            return it
+        }
+
+        return when (requestType) {
+            DownloadRequest -> {
+                // For downloads force LTE as the backup to Wifi, to avoid slow downloads.
+                networks.networks.firstOrNull {
+                    it.networkInfo.type == NetworkType.Cell
+                }
+            }
+            LiveRequest -> {
+                // For live streaming, assume a low bandwidth and use power efficient BT
                 networks.networks.firstOrNull {
                     it.networkInfo.type == NetworkType.BT
                 }
-
-            RequestType.MediaRequest.MediaRequestType.Download -> null
-            null -> null
+            }
+            else -> networks.networks.firstOrNull()
         }
-            // Otherwise, prefer faster networks if available
-            ?: networks.networks.prefer(NetworkType.Wifi, NetworkType.Cell)
     }
 }
 
@@ -79,6 +84,7 @@ object PocketCastsNetworkingRules : NetworkingRules {
  * @return The most preferred network type that is available. If none of the preferred types are
  * available, the first available network is returned. See test cases for examples.
  */
+@OptIn(ExperimentalHorologistNetworksApi::class)
 @VisibleForTesting
 internal fun List<NetworkStatus>.prefer(vararg types: NetworkType): NetworkStatus? =
     types.firstNotNullOfOrNull { type ->

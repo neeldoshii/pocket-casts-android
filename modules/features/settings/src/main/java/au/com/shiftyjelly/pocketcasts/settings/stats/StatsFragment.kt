@@ -6,7 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +22,6 @@ import androidx.compose.material.Icon
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -55,7 +53,6 @@ import au.com.shiftyjelly.pocketcasts.compose.preview.ThemePreviewParameterProvi
 import au.com.shiftyjelly.pocketcasts.compose.theme
 import au.com.shiftyjelly.pocketcasts.settings.R
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
-import au.com.shiftyjelly.pocketcasts.utils.extensions.getActivity
 import au.com.shiftyjelly.pocketcasts.utils.extensions.toLocalizedFormatLongStyle
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
 import dagger.hilt.android.AndroidEntryPoint
@@ -78,8 +75,7 @@ class StatsFragment : BaseFragment() {
                         @Suppress("DEPRECATION")
                         activity?.onBackPressed()
                     },
-                    onRetryClick = { viewModel.loadStats() },
-                    launchReviewDialog = { viewModel.launchAppReviewDialog(it) }
+                    onRetryClick = { viewModel.loadStats() }
                 )
             }
         }
@@ -98,19 +94,14 @@ class StatsFragment : BaseFragment() {
 }
 
 @Composable
-private fun StatsPage(
-    state: StatsViewModel.State,
-    onBackClick: () -> Unit,
-    onRetryClick: () -> Unit,
-    launchReviewDialog: (AppCompatActivity) -> Unit,
-) {
+private fun StatsPage(state: StatsViewModel.State, onBackClick: () -> Unit, onRetryClick: () -> Unit) {
     Column {
         ThemedTopAppBar(
             title = stringResource(LR.string.profile_navigation_stats),
             onNavigationClick = onBackClick,
         )
         when (state) {
-            is StatsViewModel.State.Loaded -> StatsPageLoaded(state, launchReviewDialog)
+            is StatsViewModel.State.Loaded -> StatsPageLoaded(state)
             is StatsViewModel.State.Error -> StatsPageError(onRetryClick)
             is StatsViewModel.State.Loading -> StatsPageLoading()
         }
@@ -147,11 +138,7 @@ private fun StatsPageError(onRetryClick: () -> Unit, modifier: Modifier = Modifi
 }
 
 @Composable
-private fun StatsPageLoaded(
-    state: StatsViewModel.State.Loaded,
-    launchReviewDialog: (AppCompatActivity) -> Unit,
-) {
-    val context = LocalContext.current
+private fun StatsPageLoaded(state: StatsViewModel.State.Loaded) {
     Column(
         modifier = Modifier
             .verticalScroll(rememberScrollState())
@@ -194,14 +181,6 @@ private fun StatsPageLoaded(
         Spacer(Modifier.height(24.dp))
         TotalRow(state.totalSaved)
         Spacer(Modifier.height(12.dp))
-
-        if (state.showAppReviewDialog) {
-            LaunchedEffect(Unit) {
-                context.getActivity()?.let {
-                    launchReviewDialog(it)
-                }
-            }
-        }
     }
 }
 
@@ -296,8 +275,7 @@ private fun StatsPageLoadedPreview(@PreviewParameter(ThemePreviewParameterProvid
         StatsPage(
             state = state,
             onBackClick = { },
-            onRetryClick = { },
-            launchReviewDialog = { },
+            onRetryClick = { }
         )
     }
 }
@@ -309,8 +287,7 @@ private fun StatsPageErrorPreview(@PreviewParameter(ThemePreviewParameterProvide
         StatsPage(
             state = StatsViewModel.State.Error,
             onBackClick = { },
-            onRetryClick = { },
-            launchReviewDialog = { },
+            onRetryClick = { }
         )
     }
 }

@@ -9,12 +9,12 @@ import au.com.shiftyjelly.pocketcasts.servers.sync.history.HistoryYearSyncReques
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.ExchangeSonosResponse
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginGoogleRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginPocketCastsRequest
+import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginPocketCastsResponse
+import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginTokenRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.login.LoginTokenResponse
 import au.com.shiftyjelly.pocketcasts.servers.sync.register.RegisterRequest
 import au.com.shiftyjelly.pocketcasts.servers.sync.update.SyncUpdateResponse
-import com.pocketcasts.service.api.BookmarkRequest
-import com.pocketcasts.service.api.BookmarksResponse
 import io.reactivex.Completable
 import io.reactivex.Single
 import okhttp3.RequestBody
@@ -26,7 +26,6 @@ import retrofit2.http.FieldMap
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Header
-import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -34,7 +33,10 @@ import retrofit2.http.Url
 
 interface SyncServer {
     @POST("/user/login_pocket_casts")
-    suspend fun loginPocketCasts(@Body request: LoginPocketCastsRequest): LoginTokenResponse
+    suspend fun login(@Body request: LoginRequest): LoginTokenResponse
+
+    @POST("/user/login_pocket_casts")
+    suspend fun loginPocketCasts(@Body request: LoginPocketCastsRequest): LoginPocketCastsResponse
 
     @POST("/user/login_google")
     suspend fun loginGoogle(@Body request: LoginGoogleRequest): LoginTokenResponse
@@ -52,7 +54,7 @@ interface SyncServer {
     suspend fun exchangeSonos(@Header("Authorization") authorization: String): ExchangeSonosResponse
 
     @POST("/user/change_email")
-    suspend fun emailChange(@Header("Authorization") authorization: String, @Body request: EmailChangeRequest): UserChangeResponse
+    fun emailChange(@Header("Authorization") authorization: String, @Body request: EmailChangeRequest): Single<UserChangeResponse>
 
     @POST("/user/delete_account")
     fun deleteAccount(@Header("Authorization") authorization: String): Single<UserChangeResponse>
@@ -142,7 +144,6 @@ interface SyncServer {
     @POST("/subscription/promo/validate")
     fun validatePromoCode(@Body request: PromoCodeRequest): Single<PromoCodeResponse>
 
-    @Headers("Content-Type: application/octet-stream")
-    @POST("/user/bookmark/list")
-    suspend fun getBookmarkList(@Header("Authorization") authorization: String, @Body request: BookmarkRequest): BookmarksResponse
+    @POST("/subscription/cancel/web")
+    fun cancelSubscription(@Header("Authorization") authorization: String, @Body request: SupporterCancelRequest): Single<Response<Void>>
 }

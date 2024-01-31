@@ -120,11 +120,7 @@ class ManualCleanupViewModel
         if (episodesToDelete.isNotEmpty()) {
             trackCleanupCompleted()
             viewModelScope.launch {
-                episodeManager.deleteEpisodeFiles(
-                    episodes = episodesToDelete,
-                    playbackManager = playbackManager,
-                    removeFromUpNext = false
-                )
+                episodeManager.deleteEpisodeFiles(episodesToDelete, playbackManager)
                 _snackbarMessage.emit(LR.string.settings_manage_downloads_deleting)
             }
         }

@@ -35,12 +35,12 @@ object AnalyticsTracker {
 
     fun setSendUsageStats(send: Boolean) {
         if (send != getSendUsageStats()) {
-            settings.collectAnalytics.set(send)
+            settings.setSendUsageStats(send)
             if (!send) {
                 trackers.forEach { it.clearAllData() }
             }
         }
     }
 
-    fun getSendUsageStats() = settings.collectAnalytics.value
+    fun getSendUsageStats() = settings.getSendUsageStats()
 }

@@ -58,7 +58,7 @@ class StorageSettingsViewModel
     val permissionRequest = mutablePermissionRequest.asSharedFlow()
 
     private val backgroundRefreshSummary: Int
-        get() = if (settings.backgroundRefreshPodcasts.value) {
+        get() = if (settings.refreshPodcastsAutomatically()) {
             LR.string.settings_storage_background_refresh_on
         } else {
             LR.string.settings_storage_background_refresh_off
@@ -126,7 +126,7 @@ class StorageSettingsViewModel
         ),
         backgroundRefreshState = State.BackgroundRefreshState(
             summary = backgroundRefreshSummary,
-            isChecked = settings.backgroundRefreshPodcasts.value,
+            isChecked = settings.refreshPodcastsAutomatically(),
             onCheckedChange = {
                 onBackgroundRefreshCheckedChange(it)
                 analyticsTracker.track(
@@ -136,7 +136,7 @@ class StorageSettingsViewModel
             }
         ),
         storageDataWarningState = State.StorageDataWarningState(
-            isChecked = settings.warnOnMeteredNetwork.value,
+            isChecked = settings.warnOnMeteredNetwork(),
             onCheckedChange = {
                 onStorageDataWarningCheckedChange(it)
                 analyticsTracker.track(
@@ -161,27 +161,27 @@ class StorageSettingsViewModel
     }
 
     private fun onStorageDataWarningCheckedChange(isChecked: Boolean) {
-        settings.warnOnMeteredNetwork.set(isChecked)
+        settings.setWarnOnMeteredNetwork(isChecked)
         updateMobileDataWarningState()
     }
 
     private fun updateMobileDataWarningState() {
         mutableState.value = mutableState.value.copy(
             storageDataWarningState = mutableState.value.storageDataWarningState.copy(
-                isChecked = settings.warnOnMeteredNetwork.value,
+                isChecked = settings.warnOnMeteredNetwork(),
             )
         )
     }
 
     private fun onBackgroundRefreshCheckedChange(isChecked: Boolean) {
-        settings.backgroundRefreshPodcasts.set(isChecked)
+        settings.setRefreshPodcastsAutomatically(isChecked)
         updateBackgroundRefreshState()
     }
 
     private fun updateBackgroundRefreshState() {
         mutableState.value = mutableState.value.copy(
             backgroundRefreshState = mutableState.value.backgroundRefreshState.copy(
-                isChecked = settings.backgroundRefreshPodcasts.value,
+                isChecked = settings.refreshPodcastsAutomatically(),
                 summary = backgroundRefreshSummary
             )
         )

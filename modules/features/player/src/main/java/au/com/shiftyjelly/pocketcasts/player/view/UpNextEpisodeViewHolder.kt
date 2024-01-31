@@ -10,6 +10,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import androidx.appcompat.view.ContextThemeWrapper
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
@@ -31,8 +32,6 @@ import au.com.shiftyjelly.pocketcasts.utils.extensions.dpToPx
 import au.com.shiftyjelly.pocketcasts.views.extensions.setRippleBackground
 import au.com.shiftyjelly.pocketcasts.views.helper.EpisodeItemTouchHelper
 import au.com.shiftyjelly.pocketcasts.views.helper.RowSwipeable
-import au.com.shiftyjelly.pocketcasts.views.helper.SwipeButtonLayout
-import au.com.shiftyjelly.pocketcasts.views.helper.SwipeButtonLayoutFactory
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.disposables.Disposable
 import io.reactivex.rxkotlin.subscribeBy
@@ -46,15 +45,12 @@ class UpNextEpisodeViewHolder(
     val listener: UpNextListener?,
     val dateFormatter: RelativeDateFormatter,
     val imageLoader: PodcastImageLoader,
-    val episodeManager: EpisodeManager,
-    private val swipeButtonLayoutFactory: SwipeButtonLayoutFactory,
+    val episodeManager: EpisodeManager
 ) : RecyclerView.ViewHolder(binding.root),
     UpNextTouchCallback.ItemTouchHelperViewHolder,
     RowSwipeable {
     private val elevatedBackground = ContextCompat.getColor(binding.root.context, R.color.elevatedBackground)
     private val selectedBackground = ContextCompat.getColor(binding.root.context, R.color.selectedBackground)
-
-    override lateinit var swipeButtonLayout: SwipeButtonLayout
 
     var disposable: Disposable? = null
         set(value) {
@@ -86,12 +82,8 @@ class UpNextEpisodeViewHolder(
         }
     }
 
-    fun bind(
-        episode: BaseEpisode,
-        isMultiSelecting: Boolean,
-        isSelected: Boolean,
-    ) {
-        val tintColor = itemView.context.getAttrTextStyleColor(UR.attr.textSubtitle1)
+    fun bind(episode: BaseEpisode, isMultiSelecting: Boolean, isSelected: Boolean) {
+        val tintColor = ContextThemeWrapper(itemView.context, UR.style.ThemeDark).getAttrTextStyleColor(UR.attr.textSubtitle1)
 
         disposable = episodeManager
             .observeByUuid(episode.uuid)
@@ -103,9 +95,6 @@ class UpNextEpisodeViewHolder(
                 binding.executePendingBindings()
             }
             .subscribeBy(onError = { Timber.e(it) })
-
-        swipeButtonLayout = swipeButtonLayoutFactory.forEpisode(episode)
-
         binding.episode = episode
         binding.date.text = episode.getSummaryText(dateFormatter = dateFormatter, tintColor = tintColor, showDuration = false, context = binding.date.context)
         binding.executePendingBindings()
@@ -149,16 +138,14 @@ class UpNextEpisodeViewHolder(
         get() = binding.itemContainer
     override val episode: BaseEpisode?
         get() = binding.episode
+    override val swipeLeftIcon: ImageView
+        get() = binding.archiveIcon
     override val positionAdapter: Int
         get() = bindingAdapterPosition
     override val leftRightIcon1: ImageView
         get() = binding.leftRightIcon1
     override val leftRightIcon2: ImageView
         get() = binding.leftRightIcon2
-    override val rightLeftIcon1: ImageView
-        get() = binding.rightLeftIcon1
-    override val rightLeftIcon2: ImageView
-        get() = binding.rightLeftIcon2
     override val isMultiSelecting: Boolean
         get() = binding.checkbox.isVisible
     override val rightToLeftSwipeLayout: ViewGroup
@@ -172,6 +159,6 @@ class UpNextEpisodeViewHolder(
             EpisodeItemTouchHelper.IconWithBackground(R.drawable.ic_upnext_movetotop, binding.itemContainer.context.getThemeColor(UR.attr.support_04)),
             EpisodeItemTouchHelper.IconWithBackground(R.drawable.ic_upnext_movetobottom, binding.itemContainer.context.getThemeColor(UR.attr.support_03))
         )
-    override val rightIconDrawablesRes: List<EpisodeItemTouchHelper.IconWithBackground>
+    override val rightIconDrawableRes: List<EpisodeItemTouchHelper.IconWithBackground>
         get() = listOf(EpisodeItemTouchHelper.IconWithBackground(R.drawable.ic_upnext_remove, binding.itemContainer.context.getThemeColor(UR.attr.support_05)))
 }

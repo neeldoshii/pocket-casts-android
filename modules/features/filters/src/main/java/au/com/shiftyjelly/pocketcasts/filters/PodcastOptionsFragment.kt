@@ -79,8 +79,7 @@ class PodcastOptionsFragment : BaseFragment(), PodcastSelectFragment.Listener, C
 
         launch {
             val subscribedPodcasts = withContext(Dispatchers.Default) { podcastManager.findSubscribed() }.map { it.uuid }
-            val playlistUuid = requireArguments().getString(ARG_PLAYLIST_UUID) ?: return@launch
-            val playlist = playlistManager.findByUuid(playlistUuid) ?: return@launch
+            val playlist = withContext(Dispatchers.Default) { playlistManager.findByUuid(requireArguments().getString(ARG_PLAYLIST_UUID)!!) }!!
             this@PodcastOptionsFragment.playlist = playlist
 
             val color = playlist.getColor(context)

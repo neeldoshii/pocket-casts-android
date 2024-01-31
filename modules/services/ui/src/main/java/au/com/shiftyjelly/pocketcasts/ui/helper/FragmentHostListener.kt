@@ -9,7 +9,7 @@ interface FragmentHostListener {
     fun replaceFragment(fragment: Fragment)
     fun showBottomSheet(fragment: Fragment)
     fun bottomSheetClosePressed(fragment: Fragment)
-    fun openPlayer(source: String? = null)
+    fun openPlayer()
     fun closePlayer()
     fun showModal(fragment: Fragment)
     fun closeModal(fragment: Fragment)
@@ -29,5 +29,4 @@ interface FragmentHostListener {
     fun overrideNextRefreshTimer()
     fun isUpNextShowing(): Boolean
     fun showStoriesOrAccount(source: String)
-    fun whatsNewDismissed(fromConfirmAction: Boolean = false)
 }

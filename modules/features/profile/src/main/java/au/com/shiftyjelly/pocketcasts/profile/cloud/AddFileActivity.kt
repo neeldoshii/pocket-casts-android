@@ -8,7 +8,9 @@ import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Parcelable
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.view.MenuItem
@@ -19,7 +21,6 @@ import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
-import androidx.core.content.IntentCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.view.isVisible
 import androidx.media3.common.MediaItem
@@ -83,7 +84,6 @@ private const val ACTION_PICK_FILE = 2
 private const val EXTRA_EXISTING_EPISODE_UUID = "fileUUID"
 private const val EXTRA_FILE_CHOOSER = "filechooser"
 private const val STATE_LAUNCHED_FILE_CHOOSER = "LAUNCHED_FILE_CHOOSER"
-private const val STATE_DATAURI = "DATAURI"
 
 @AndroidEntryPoint
 class AddFileActivity :
@@ -257,7 +257,14 @@ class AddFileActivity :
             }
 
             dataUri = when (intent?.action) {
-                Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+                Intent.ACTION_SEND -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra<Parcelable>(Intent.EXTRA_STREAM) as? Uri
+                    }
+                }
                 Intent.ACTION_VIEW -> intent.data
                 else -> null
             }
@@ -291,22 +298,15 @@ class AddFileActivity :
                 updateColorItems()
             }
         }
-
-        @Suppress("DEPRECATION")
-        if (savedInstanceState != null) {
-            dataUri = savedInstanceState.getParcelable(STATE_DATAURI)
-            setupForNewFile(dataUri)
-        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_LAUNCHED_FILE_CHOOSER, launchedFileChooser)
-        outState.putParcelable(STATE_DATAURI, dataUri)
     }
 
     private fun openOnboardingFlow() {
-        openOnboardingFlow(OnboardingFlow.Upsell(OnboardingUpgradeSource.FILES))
+        openOnboardingFlow(OnboardingFlow.PlusUpsell(OnboardingUpgradeSource.FILES))
     }
 
     override fun openOnboardingFlow(onboardingFlow: OnboardingFlow) {

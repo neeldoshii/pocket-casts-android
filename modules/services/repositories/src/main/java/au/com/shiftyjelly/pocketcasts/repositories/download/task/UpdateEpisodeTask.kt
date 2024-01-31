@@ -1,65 +1,61 @@
 package au.com.shiftyjelly.pocketcasts.repositories.download.task
 
 import android.content.Context
-import androidx.hilt.work.HiltWorker
-import androidx.work.CoroutineWorker
-import androidx.work.Data
+import androidx.work.Worker
 import androidx.work.WorkerParameters
 import au.com.shiftyjelly.pocketcasts.models.db.AppDatabase
-import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
-import au.com.shiftyjelly.pocketcasts.servers.podcast.PodcastCacheServerManager
-import dagger.assisted.Assisted
-import dagger.assisted.AssistedInject
-import timber.log.Timber
+import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.servers.podcast.PodcastCacheServerManagerImpl
+import com.squareup.moshi.Moshi
+import okhttp3.OkHttpClient
+import retrofit2.Retrofit
+import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory
+import retrofit2.converter.moshi.MoshiConverterFactory
 
-/**
- * This task updates the download url of an episode.
- */
-@HiltWorker
-class UpdateEpisodeTask @AssistedInject constructor(
-    @Assisted val context: Context,
-    @Assisted val params: WorkerParameters,
-    val podcastCacheServerManager: PodcastCacheServerManager,
-    val appDatabase: AppDatabase
-) : CoroutineWorker(context, params) {
+class UpdateEpisodeTask(val context: Context, val params: WorkerParameters) : Worker(context, params) {
     companion object {
         const val INPUT_PODCAST_UUID = "podcast_uuid"
         const val INPUT_EPISODE_UUID = "episode_uuid"
-
-        fun buildInputData(episode: PodcastEpisode): Data {
-            return Data.Builder()
-                .putString(INPUT_EPISODE_UUID, episode.uuid)
-                .putString(INPUT_PODCAST_UUID, episode.podcastUuid)
-                .build()
-        }
     }
 
-    private val podcastUuid = inputData.getString(INPUT_PODCAST_UUID)
-    private val episodeUuid = inputData.getString(INPUT_EPISODE_UUID)
-    private val episodeDao = appDatabase.episodeDao()
+    private val moshi = Moshi.Builder().build()
+    private val httpClient = OkHttpClient()
+    private val retrofit = Retrofit.Builder()
+        .addConverterFactory(MoshiConverterFactory.create(moshi))
+        .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+        .baseUrl(Settings.SERVER_CACHE_URL)
+        .client(httpClient)
+        .build()
 
-    override suspend fun doWork(): Result {
+    private val podcastUUID = inputData.getString(INPUT_PODCAST_UUID)
+    private val episodeUUID = inputData.getString(INPUT_EPISODE_UUID)!!
+
+    override fun doWork(): Result {
         try {
-            if (podcastUuid == null || episodeUuid == null) {
-                return Result.success()
+            if (podcastUUID == null) {
+                return Result.success() // Nothing to do without a podcast
             }
 
-            val serverPodcast = podcastCacheServerManager.getPodcastAndEpisode(podcastUuid, episodeUuid)
+            // TODO use @HiltWorker and inject these
+            val serverPodcast = PodcastCacheServerManagerImpl(retrofit).getPodcastAndEpisode(podcastUUID, episodeUUID).blockingGet()
+            val appDatabase = AppDatabase.getInstance(context)
+            val episodeDao = appDatabase.episodeDao()
 
-            val episode = episodeDao.findByUuid(episodeUuid)
+            val episode = episodeDao.findByUuid(episodeUUID)
             val serverEpisodeUrl = serverPodcast.episodes.firstOrNull()?.downloadUrl
             if (episode != null &&
-                !serverEpisodeUrl.isNullOrBlank() &&
+                serverEpisodeUrl != null &&
+                serverEpisodeUrl.isNotBlank() &&
                 episode.downloadUrl != serverEpisodeUrl
             ) {
                 episode.downloadUrl = serverEpisodeUrl
+
                 episodeDao.updateDownloadUrl(serverEpisodeUrl, episode.uuid)
             }
 
             return Result.success()
         } catch (e: Exception) {
-            Timber.i(e, "Failed to update episode download url. Podcast: $podcastUuid Episode: $episodeUuid")
-            return Result.success()
+            return Result.failure()
         }
     }
 }

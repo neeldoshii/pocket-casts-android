@@ -7,7 +7,6 @@ import androidx.room.Ignore
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import au.com.shiftyjelly.pocketcasts.localization.R
-import au.com.shiftyjelly.pocketcasts.models.converter.SafeDate
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodePlayingStatus
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeStatusEnum
 import java.io.Serializable
@@ -24,7 +23,7 @@ import java.util.Date
 data class PodcastEpisode(
     @PrimaryKey(autoGenerate = false) @ColumnInfo(name = "uuid") override var uuid: String,
     @ColumnInfo(name = "episode_description") override var episodeDescription: String = "",
-    @ColumnInfo(name = "published_date") override var publishedDate: SafeDate,
+    @ColumnInfo(name = "published_date") override var publishedDate: Date,
     @ColumnInfo(name = "title") override var title: String = "",
     @ColumnInfo(name = "size_in_bytes") override var sizeInBytes: Long = 0,
     @ColumnInfo(name = "episode_status") override var episodeStatus: EpisodeStatusEnum = EpisodeStatusEnum.NOT_DOWNLOADED,
@@ -57,8 +56,7 @@ data class PodcastEpisode(
     @ColumnInfo(name = "last_playback_interaction_sync_status") var lastPlaybackInteractionSyncStatus: Long = LAST_PLAYBACK_INTERACTION_SYNCED,
     @ColumnInfo(name = "exclude_from_episode_limit") var excludeFromEpisodeLimit: Boolean = false,
     @ColumnInfo(name = "download_task_id") override var downloadTaskId: String? = null,
-    @ColumnInfo(name = "last_archive_interaction_date") var lastArchiveInteraction: Long? = null,
-    @ColumnInfo(name = "image_url") var imageUrl: String? = null,
+    @ColumnInfo(name = "last_archive_interaction_date") var lastArchiveInteraction: Long? = null
 ) : BaseEpisode, Serializable {
 
     sealed class EpisodeType {
@@ -139,8 +137,6 @@ data class PodcastEpisode(
     // temporary variables
     @Ignore
     override var playing: Boolean = false
-    @Ignore
-    var hasBookmark: Boolean = false
 
     val playedPercentage: Int
         get() {

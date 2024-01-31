@@ -39,8 +39,7 @@ import au.com.shiftyjelly.pocketcasts.localization.helper.TimeHelper
 import au.com.shiftyjelly.pocketcasts.models.entity.BaseEpisode
 import au.com.shiftyjelly.pocketcasts.repositories.playback.UpNextQueue
 import au.com.shiftyjelly.pocketcasts.utils.extensions.toLocalizedFormatPattern
-import au.com.shiftyjelly.pocketcasts.wear.theme.WearColors
-import au.com.shiftyjelly.pocketcasts.images.R as IR
+import au.com.shiftyjelly.pocketcasts.wear.theme.theme
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
 
 @Composable
@@ -108,7 +107,7 @@ fun EpisodeChip(
                     text = episode.title,
                     lineHeight = 16.sp,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colors.onPrimary,
+                    color = MaterialTheme.theme.colors.primaryText01,
                     style = MaterialTheme.typography.button.merge(
                         @Suppress("DEPRECATION")
                         (
@@ -142,29 +141,9 @@ fun EpisodeChip(
                     }
                     Text(
                         text = "$shortDate • $timeLeft",
-                        color = MaterialTheme.colors.onSecondary,
+                        color = MaterialTheme.theme.colors.primaryText02,
                         style = MaterialTheme.typography.caption2,
                     )
-                }
-                episode.playErrorDetails?.let {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            painter = painterResource(IR.drawable.ic_alert_small),
-                            contentDescription = stringResource(LR.string.podcast_episode_playback_error),
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colors.onSecondary,
-                        )
-                        Text(
-                            text = it,
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 1,
-                            color = MaterialTheme.colors.onSecondary,
-                            style = MaterialTheme.typography.caption3,
-                            modifier = Modifier.padding(start = 5.dp)
-                        )
-                    }
                 }
             }
         }
@@ -185,7 +164,7 @@ private fun IconsRow(
             Icon(
                 painter = painterResource(R.drawable.ic_upnext),
                 contentDescription = stringResource(LR.string.episode_in_up_next),
-                tint = WearColors.upNextIcon,
+                tint = MaterialTheme.theme.colors.support01,
                 modifier = Modifier.size(12.dp),
             )
         }
@@ -194,7 +173,7 @@ private fun IconsRow(
             Icon(
                 painter = painterResource(R.drawable.ic_downloaded),
                 contentDescription = stringResource(LR.string.downloaded),
-                tint = WearColors.downloadedIcon,
+                tint = MaterialTheme.theme.colors.support02,
                 modifier = Modifier.size(12.dp),
             )
         }

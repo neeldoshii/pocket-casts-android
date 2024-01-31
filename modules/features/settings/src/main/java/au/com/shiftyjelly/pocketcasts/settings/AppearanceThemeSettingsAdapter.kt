@@ -19,7 +19,7 @@ import au.com.shiftyjelly.pocketcasts.ui.R as UR
 
 class AppearanceThemeSettingsAdapter(
     private var mainWidth: Int?,
-    private var isPlusOrPatronSignedIn: Boolean,
+    private var isPlusSignedIn: Boolean,
     private var selectedTheme: Theme.ThemeType,
     private var list: List<Theme.ThemeType>,
     private val clickListener: (Theme.ThemeType, Theme.ThemeType, Boolean) -> Unit
@@ -53,7 +53,7 @@ class AppearanceThemeSettingsAdapter(
     override fun getItemCount() = list.size
 
     fun updatePlusSignedIn(value: Boolean) {
-        isPlusOrPatronSignedIn = value
+        isPlusSignedIn = value
         notifyDataSetChanged()
     }
 
@@ -84,7 +84,7 @@ class AppearanceThemeSettingsAdapter(
         }
 
         fun bind(theme: Theme.ThemeType, selected: Boolean) {
-            val showOption = !theme.isPlus || isPlusOrPatronSignedIn
+            val showOption = !theme.isPlus || isPlusSignedIn
             binding.themeItem.alpha = if (showOption) 1.0f else 0.65f
 
             val drawable = AppCompatResources.getDrawable(itemView.context, theme.iconResourceId)
@@ -109,13 +109,9 @@ class AppearanceThemeSettingsAdapter(
             }
             val beforeTheme = selectedTheme
             val afterTheme = list[bindingAdapterPosition]
-            val validTheme = !afterTheme.isPlus || isPlusOrPatronSignedIn
+            val validTheme = !afterTheme.isPlus || isPlusSignedIn
 
-            selectedTheme = if (validTheme) {
-                afterTheme
-            } else {
-                beforeTheme
-            }
+            selectedTheme = afterTheme
             clickListener(beforeTheme, afterTheme, validTheme)
             notifyDataSetChanged()
         }

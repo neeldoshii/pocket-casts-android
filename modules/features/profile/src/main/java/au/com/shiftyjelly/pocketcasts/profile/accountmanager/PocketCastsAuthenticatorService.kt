@@ -10,20 +10,14 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class PocketCastsAuthenticatorService : Service() {
     @Inject lateinit var syncManager: SyncManager
-
-    private var authenticator: PocketCastsAccountAuthenticator? = null
+    lateinit var authenticator: PocketCastsAccountAuthenticator
 
     override fun onCreate() {
         super.onCreate()
         authenticator = PocketCastsAccountAuthenticator(this, syncManager)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        authenticator = null
-    }
-
     override fun onBind(intent: Intent?): IBinder? {
-        return authenticator?.iBinder
+        return authenticator.iBinder
     }
 }

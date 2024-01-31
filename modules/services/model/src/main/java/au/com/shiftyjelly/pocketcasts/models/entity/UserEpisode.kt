@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.Ignore
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import au.com.shiftyjelly.pocketcasts.models.db.helper.UserEpisodePodcastSubstitute
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodePlayingStatus
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeStatusEnum
 import au.com.shiftyjelly.pocketcasts.models.type.UserEpisodeServerStatus
@@ -51,11 +52,8 @@ data class UserEpisode(
     @Ignore
     override var playing: Boolean = false
 
-    @Ignore
-    var hasBookmark: Boolean = false
-
     override fun displaySubtitle(podcast: Podcast?): String {
-        return Podcast.userPodcast.title
+        return UserEpisodePodcastSubstitute.substituteTitle
     }
 
     val isUploading: Boolean

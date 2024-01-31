@@ -31,7 +31,7 @@ fun CircleButton(size: Dp, onClick: () -> Unit, backgroundColor: Color, modifier
 
 @Preview(showBackground = true)
 @Composable
-private fun CircleButtonPreview() {
+fun CircleButtonPreview() {
     AppTheme(Theme.ThemeType.LIGHT) {
         CircleButton(
             size = 48.dp,

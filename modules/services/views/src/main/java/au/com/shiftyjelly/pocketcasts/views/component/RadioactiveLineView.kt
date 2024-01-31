@@ -20,8 +20,9 @@ class RadioactiveLineView @JvmOverloads constructor(
         alpha = 58
     }
 
-    override fun onDraw(canvas: Canvas) {
+    override fun onDraw(canvas: Canvas?) {
         super.onDraw(canvas)
+        if (canvas == null) return
 
         val gapWidth = width / (GAP_COUNT + 1).toFloat()
         (0..GAP_COUNT).forEach {

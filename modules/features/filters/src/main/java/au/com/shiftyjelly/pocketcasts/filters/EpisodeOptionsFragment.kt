@@ -21,6 +21,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import javax.inject.Inject
 import kotlin.coroutines.CoroutineContext
@@ -71,9 +72,11 @@ class EpisodeOptionsFragment : BaseFragment(), CoroutineScope {
         val recyclerView = binding.recyclerView
 
         launch {
-            val uuid = requireArguments().getString(ARG_PLAYLIST_UUID)!!
-            Timber.d("Loading playlist $uuid")
-            val playlist = playlistManager.findByUuid(uuid) ?: return@launch
+            val playlist = withContext(Dispatchers.Default) {
+                val uuid = requireArguments().getString(ARG_PLAYLIST_UUID)!!
+                Timber.d("Loading playlist $uuid")
+                playlistManager.findByUuid(uuid)
+            } ?: return@launch
             this@EpisodeOptionsFragment.playlist = playlist
 
             val unplayedOption = FilterOption(LR.string.unplayed, playlist.unplayed, { v, _ ->

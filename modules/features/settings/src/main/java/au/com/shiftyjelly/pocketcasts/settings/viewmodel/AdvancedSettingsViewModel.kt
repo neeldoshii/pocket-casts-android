@@ -25,11 +25,11 @@ class AdvancedSettingsViewModel
     private fun initState() = State(
         backgroundSyncOnMeteredState = State.BackgroundSyncOnMeteredState(
             isChecked = settings.syncOnMeteredNetwork(),
-            isEnabled = settings.backgroundRefreshPodcasts.value,
+            isEnabled = settings.refreshPodcastsAutomatically(),
             onCheckedChange = {
                 // isEnabled controls the grey out of the function but not if it's actually called
                 // here we disable the functionality
-                if (settings.backgroundRefreshPodcasts.value) {
+                if (settings.refreshPodcastsAutomatically()) {
                     onSyncOnMeteredCheckedChange(it)
                     analyticsTracker.track(
                         AnalyticsEvent.SETTINGS_ADVANCED_SYNC_ON_METERED,

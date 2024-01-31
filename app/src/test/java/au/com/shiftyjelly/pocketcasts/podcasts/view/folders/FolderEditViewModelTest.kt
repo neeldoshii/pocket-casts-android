@@ -1,23 +1,22 @@
 package au.com.shiftyjelly.pocketcasts.podcasts.view.folders
 
-import au.com.shiftyjelly.pocketcasts.sharedtest.MainCoroutineRule
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import org.mockito.kotlin.mock
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class FolderEditViewModelTest {
 
     lateinit var viewModel: FolderEditViewModel
 
-    @get:Rule
-    val coroutineRule = MainCoroutineRule()
-
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Before
     fun setUp() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
         viewModel = FolderEditViewModel(mock(), mock(), mock(), mock())
     }
 

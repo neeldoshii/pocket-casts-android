@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.NetworkType
 import au.com.shiftyjelly.pocketcasts.preferences.SettingsImpl
-import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.squareup.moshi.Moshi
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -19,21 +18,14 @@ class AdvancedSettingsTest {
         val sharedPreferences = context.getSharedPreferences(fileName, Context.MODE_PRIVATE)
         sharedPreferences.edit().clear().commit()
         val moshi = Moshi.Builder().build()
-        val firebaseRemoteConfig = FirebaseRemoteConfig.getInstance()
-        val settings = SettingsImpl(
-            sharedPreferences = sharedPreferences,
-            privatePreferences = sharedPreferences,
-            context = context,
-            firebaseRemoteConfig = firebaseRemoteConfig,
-            moshi = moshi,
-        )
+        val settings = SettingsImpl(sharedPreferences, sharedPreferences, context, moshi)
 
         // Non-advanced settings
-        assertEquals(false, settings.warnOnMeteredNetwork.flow.value)
-        assertEquals(true, settings.autoDownloadUnmeteredOnly.flow.value)
-        assertEquals(false, settings.autoDownloadOnlyWhenCharging.flow.value)
-        assertEquals(false, settings.autoDownloadUpNext.flow.value)
-        assertEquals(true, settings.backgroundRefreshPodcasts.flow.value)
+        assertEquals(false, settings.warnOnMeteredNetwork())
+        assertEquals(true, settings.isPodcastAutoDownloadUnmeteredOnly())
+        assertEquals(false, settings.isPodcastAutoDownloadPowerOnly())
+        assertEquals(false, settings.isUpNextAutoDownloaded())
+        assertEquals(true, settings.refreshPodcastsAutomatically())
 
         // Advanced settings
         assertEquals(true, settings.syncOnMeteredNetwork())

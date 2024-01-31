@@ -1,7 +1,6 @@
 package au.com.shiftyjelly.pocketcasts.utils.extensions
 
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.app.ActivityManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.ContextWrapper
@@ -28,19 +27,3 @@ fun Context.getActivity(): AppCompatActivity? = when (this) {
 
 fun Context.isLandscape() =
     resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
-fun Context.isAppForeground(): Boolean {
-    val activityManager =
-        this.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-    val runningProcesses = activityManager.runningAppProcesses
-    var isInForeground = false
-    for (processInfo in runningProcesses) {
-        if (processInfo.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
-            processInfo.processName == this.packageName
-        ) {
-            isInForeground = true
-            break
-        }
-    }
-    return isInForeground
-}

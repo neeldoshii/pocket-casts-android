@@ -7,7 +7,6 @@ import au.com.shiftyjelly.pocketcasts.repositories.file.FileStorage
 import au.com.shiftyjelly.pocketcasts.repositories.file.StorageException
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.EpisodeManager
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
-import kotlinx.coroutines.runBlocking
 
 object DownloadHelper {
 
@@ -16,9 +15,7 @@ object DownloadHelper {
             return
         }
 
-        runBlocking {
-            episodeManager.updateAutoDownloadStatus(episode, PodcastEpisode.AUTO_DOWNLOAD_STATUS_MANUALLY_DOWNLOADED)
-        }
+        episodeManager.updateAutoDownloadStatus(episode, PodcastEpisode.AUTO_DOWNLOAD_STATUS_MANUALLY_DOWNLOADED)
         downloadManager.addEpisodeToQueue(episode, from, true)
     }
 
@@ -30,9 +27,15 @@ object DownloadHelper {
             return
         }
         LogBuffer.i(LogBuffer.TAG_BACKGROUND_TASKS, "Adding ${episode.title} to auto download from $from")
-        runBlocking {
-            episodeManager.updateAutoDownloadStatus(episode, PodcastEpisode.AUTO_DOWNLOAD_STATUS_AUTO_DOWNLOADED)
+        episodeManager.updateAutoDownloadStatus(episode, PodcastEpisode.AUTO_DOWNLOAD_STATUS_AUTO_DOWNLOADED)
+        downloadManager.addEpisodeToQueue(episode, from, true)
+    }
+
+    fun addEpisodeToQueueOverridingWifiWarning(episode: PodcastEpisode, from: String, downloadManager: DownloadManager, episodeManager: EpisodeManager) {
+        if (episode.isDownloaded) {
+            return
         }
+        episodeManager.updateAutoDownloadStatus(episode, PodcastEpisode.AUTO_DOWNLOAD_STATUS_MANUAL_OVERRIDE_WIFI)
         downloadManager.addEpisodeToQueue(episode, from, true)
     }
 

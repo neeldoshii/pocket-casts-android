@@ -4,8 +4,6 @@ import androidx.work.WorkerFactory
 import au.com.shiftyjelly.pocketcasts.analytics.AccountStatusInfo
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.preferences.SettingsImpl
-import au.com.shiftyjelly.pocketcasts.repositories.bookmark.BookmarkManager
-import au.com.shiftyjelly.pocketcasts.repositories.bookmark.BookmarkManagerImpl
 import au.com.shiftyjelly.pocketcasts.repositories.chromecast.CastManager
 import au.com.shiftyjelly.pocketcasts.repositories.chromecast.CastManagerImpl
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
@@ -36,8 +34,6 @@ import au.com.shiftyjelly.pocketcasts.repositories.searchhistory.SearchHistoryMa
 import au.com.shiftyjelly.pocketcasts.repositories.searchhistory.SearchHistoryManagerImpl
 import au.com.shiftyjelly.pocketcasts.repositories.subscription.SubscriptionManager
 import au.com.shiftyjelly.pocketcasts.repositories.subscription.SubscriptionManagerImpl
-import au.com.shiftyjelly.pocketcasts.repositories.sync.SyncAccountManager
-import au.com.shiftyjelly.pocketcasts.repositories.sync.SyncAccountManagerImpl
 import au.com.shiftyjelly.pocketcasts.repositories.sync.SyncManager
 import au.com.shiftyjelly.pocketcasts.repositories.sync.SyncManagerImpl
 import au.com.shiftyjelly.pocketcasts.repositories.user.StatsManager
@@ -74,10 +70,6 @@ abstract class RepositoryModule {
 
     @Binds
     @Singleton
-    abstract fun providesSyncAccountManager(syncAccountManagerImpl: SyncAccountManagerImpl): SyncAccountManager
-
-    @Binds
-    @Singleton
     abstract fun providesFolderManager(folderManagerImpl: FolderManagerImpl): FolderManager
 
     @Binds
@@ -87,10 +79,6 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun providesPlaylistManager(playlistManagerImpl: PlaylistManagerImpl): PlaylistManager
-
-    @Binds
-    @Singleton
-    abstract fun providesBookmarkManager(bookmarkManager: BookmarkManagerImpl): BookmarkManager
 
     @Binds
     @Singleton

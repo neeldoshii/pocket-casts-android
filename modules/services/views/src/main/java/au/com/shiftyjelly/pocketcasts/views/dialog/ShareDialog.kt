@@ -1,10 +1,9 @@
 package au.com.shiftyjelly.pocketcasts.views.dialog
 
-import android.app.Application
 import android.content.Context
 import androidx.fragment.app.FragmentManager
+import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
-import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.SharePodcastHelper
@@ -21,17 +20,8 @@ class ShareDialog(
     private val analyticsTracker: AnalyticsTrackerWrapper
 ) {
 
-    init {
-        if (context is Application) {
-            // Cannot use application context here because it will cause a crash when
-            // the show method tries to start a new activity.
-            throw IllegalArgumentException("ShareDialog cannot use the application context")
-        }
-    }
-
-    // If the share dialog is not appearing, make sure you're setting an appropriate fragmentManager
-    // when constructing this class, i.e., you might need a parentFragmentManager instead of a childFragmentManager
-    fun show(sourceView: SourceView) {
+    private val source = AnalyticsSource.EPISODE_DETAILS
+    fun show() {
         if (fragmentManager == null || context == null) {
             return
         }
@@ -47,7 +37,7 @@ class ShareDialog(
                         null,
                         context,
                         ShareType.PODCAST,
-                        sourceView,
+                        source,
                         analyticsTracker
                     ).showShareDialogDirect()
                 }
@@ -63,7 +53,7 @@ class ShareDialog(
                         null,
                         context,
                         ShareType.EPISODE,
-                        sourceView,
+                        source,
                         analyticsTracker
                     ).showShareDialogDirect()
                 }
@@ -77,7 +67,7 @@ class ShareDialog(
                         episode.playedUpTo,
                         context,
                         ShareType.CURRENT_TIME,
-                        sourceView,
+                        source,
                         analyticsTracker
                     ).showShareDialogDirect()
                 }
@@ -92,7 +82,7 @@ class ShareDialog(
                             episode.playedUpTo,
                             context,
                             ShareType.EPISODE_FILE,
-                            sourceView,
+                            source,
                             analyticsTracker
                         ).sendFile()
                     }

@@ -12,6 +12,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.Icon
 import au.com.shiftyjelly.pocketcasts.images.R
+import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.wear.theme.WearAppTheme
 
 @Composable
@@ -35,7 +36,7 @@ fun QueueButton(inUpNext: Boolean, tint: Color, onClick: () -> Unit) {
 @Preview
 @Composable
 private fun Preview() {
-    WearAppTheme {
+    WearAppTheme(Theme.ThemeType.DARK) {
         Column {
             QueueButton(
                 inUpNext = true,

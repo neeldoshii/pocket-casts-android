@@ -12,7 +12,6 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesResult
 import io.reactivex.Flowable
 import io.reactivex.Single
-import kotlinx.coroutines.flow.Flow
 
 interface SubscriptionManager {
 
@@ -30,15 +29,14 @@ interface SubscriptionManager {
     suspend fun sendPurchaseToServer(purchase: Purchase)
     fun refreshPurchases()
     suspend fun getPurchases(): PurchasesResult?
-    fun launchBillingFlow(activity: Activity, productDetails: ProductDetails, offerToken: String)
+    fun launchBillingFlow(activity: Activity, productDetails: ProductDetails, offerToken: String): BillingResult?
     fun getCachedStatus(): SubscriptionStatus?
     fun clearCachedStatus()
-    fun isFreeTrialEligible(tier: Subscription.SubscriptionTier): Boolean
-    fun updateFreeTrialEligible(tier: Subscription.SubscriptionTier, eligible: Boolean)
+    fun isFreeTrialEligible(): Boolean
+    fun updateFreeTrialEligible(eligible: Boolean)
     fun getDefaultSubscription(
         subscriptions: List<Subscription>,
         tier: Subscription.SubscriptionTier? = null,
         frequency: SubscriptionFrequency? = null,
     ): Subscription?
-    fun freeTrialForSubscriptionTierFlow(subscriptionTier: Subscription.SubscriptionTier): Flow<FreeTrial>
 }

@@ -8,9 +8,9 @@ import android.widget.ImageView
 import android.widget.PopupMenu
 import androidx.annotation.ColorInt
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
+import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
 import au.com.shiftyjelly.pocketcasts.analytics.FirebaseAnalyticsTracker
-import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.entity.BaseEpisode
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeStatusEnum
@@ -36,7 +36,6 @@ class PlayButton @JvmOverloads constructor(
     private var buttonType: PlayButtonType = PlayButtonType.PLAY
     private var episodeUuid: String? = null
     private var podcastUuid: String? = null
-    private var buttonColor: Int? = null
     private var fromListUuid: String? = null
     private var episodeStatus: EpisodeStatusEnum = EpisodeStatusEnum.NOT_DOWNLOADED
     private val progressCircle: ProgressCircleView
@@ -70,7 +69,7 @@ class PlayButton @JvmOverloads constructor(
     }
 
     interface OnClickListener {
-        var source: SourceView
+        var source: AnalyticsSource
         fun onPlayClicked(episodeUuid: String)
         fun onPauseClicked()
         fun onPlayNext(episodeUuid: String)
@@ -128,7 +127,7 @@ class PlayButton @JvmOverloads constructor(
     }
 
     fun setButtonType(episode: BaseEpisode, buttonType: PlayButtonType, @ColorInt color: Int, fromListUuid: String?) {
-        if (buttonType == this.buttonType && episode.uuid == this.episodeUuid && this.buttonColor == color) {
+        if (buttonType == this.buttonType && episode.uuid == this.episodeUuid) {
             return
         }
 
@@ -143,7 +142,6 @@ class PlayButton @JvmOverloads constructor(
             PlayButtonType.PLAYED -> context.getThemeColor(UR.attr.primary_icon_02)
             else -> color
         }
-        this.buttonColor = buttonColor
         setIconDrawable(buttonType.drawableId, buttonColor)
         progressCircle.setColor(buttonColor)
         progressCircle.setEpisode(episode, buttonType == PlayButtonType.PLAYED)

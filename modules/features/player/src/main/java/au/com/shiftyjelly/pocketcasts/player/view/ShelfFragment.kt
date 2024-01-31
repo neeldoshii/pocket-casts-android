@@ -35,7 +35,6 @@ import au.com.shiftyjelly.pocketcasts.ui.helper.ColorUtils
 import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
 import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
 import au.com.shiftyjelly.pocketcasts.utils.extensions.dpToPx
-import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import au.com.shiftyjelly.pocketcasts.views.extensions.setRippleBackground
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
 import dagger.hilt.android.AndroidEntryPoint
@@ -164,11 +163,8 @@ class ShelfFragment : BaseFragment(), ShelfTouchCallback.ItemTouchHelperAdapter 
 
     private fun trackShelfItemMovedEvent(position: Int) {
         dragStartPosition?.let {
-            val title = try {
-                (items[position] as? ShelfItem)?.analyticsValue
-            } catch (e: IndexOutOfBoundsException) {
-                LogBuffer.i(LogBuffer.TAG_INVALID_STATE, "Error getting title for position $position in ShelfFragment", e)
-            } ?: AnalyticsProp.Value.UNKNOWN
+            val title = (items[position] as? ShelfItem)?.analyticsValue
+                ?: AnalyticsProp.Value.UNKNOWN
             val movedFrom = sectionTitleAt(it)
             val movedTo = sectionTitleAt(position)
             val newPosition = if (movedTo == AnalyticsProp.Value.SHELF) {

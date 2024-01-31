@@ -3,16 +3,13 @@ package au.com.shiftyjelly.pocketcasts.profile
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.asLiveData
 import androidx.lifecycle.map
 import androidx.lifecycle.toLiveData
-import androidx.lifecycle.viewModelScope
 import au.com.shiftyjelly.pocketcasts.account.viewmodel.NewsletterSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
 import au.com.shiftyjelly.pocketcasts.models.to.SignInState
 import au.com.shiftyjelly.pocketcasts.models.type.Subscription
-import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionMapper
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.repositories.subscription.ProductDetailsState
 import au.com.shiftyjelly.pocketcasts.repositories.subscription.SubscriptionManager
@@ -23,6 +20,7 @@ import au.com.shiftyjelly.pocketcasts.utils.Optional
 import au.com.shiftyjelly.pocketcasts.utils.SentryHelper
 import au.com.shiftyjelly.pocketcasts.utils.combineLatest
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.reactivex.BackpressureStrategy
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.rxkotlin.addTo
 import io.reactivex.rxkotlin.combineLatest
@@ -52,9 +50,7 @@ class AccountDetailsViewModel
                 .mapNotNull {
                     Subscription.fromProductDetails(
                         productDetails = it,
-                        isFreeTrialEligible = subscriptionManager.isFreeTrialEligible(
-                            SubscriptionMapper.mapProductIdToTier(it.productId)
-                        )
+                        isFreeTrialEligible = subscriptionManager.isFreeTrialEligible()
                     )
                 }
             Optional.of(subscriptionManager.getDefaultSubscription(subscriptions))
@@ -73,9 +69,10 @@ class AccountDetailsViewModel
     val accountStartDate: LiveData<Date> = MutableLiveData<Date>().apply { value = Date(statsManager.statsStartTime) }
 
     val marketingOptInState: LiveData<Boolean> =
-        settings.marketingOptIn
-            .flow
-            .asLiveData(viewModelScope.coroutineContext)
+        settings.marketingOptObservable
+            .distinctUntilChanged()
+            .toFlowable(BackpressureStrategy.LATEST)
+            .toLiveData()
 
     fun deleteAccount() {
         syncManager.deleteAccount()
@@ -107,7 +104,8 @@ class AccountDetailsViewModel
             AnalyticsEvent.NEWSLETTER_OPT_IN_CHANGED,
             mapOf(SOURCE_KEY to NewsletterSource.PROFILE.analyticsValue, ENABLED_KEY to isChecked)
         )
-        settings.marketingOptIn.set(isChecked, needsSync = true)
+        settings.setMarketingOptIn(isChecked)
+        settings.setMarketingOptInNeedsSync(true)
     }
 
     override fun onCleared() {

@@ -27,7 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
@@ -42,6 +41,7 @@ import au.com.shiftyjelly.pocketcasts.compose.AppThemeWithBackground
 import au.com.shiftyjelly.pocketcasts.compose.bars.NavigationButton
 import au.com.shiftyjelly.pocketcasts.compose.bars.ThemedTopAppBar
 import au.com.shiftyjelly.pocketcasts.compose.components.GradientIcon
+import au.com.shiftyjelly.pocketcasts.compose.components.GradientIconData
 import au.com.shiftyjelly.pocketcasts.compose.components.TextH30
 import au.com.shiftyjelly.pocketcasts.compose.components.TextP50
 import au.com.shiftyjelly.pocketcasts.compose.preview.ThemePreviewParameterProvider
@@ -187,15 +187,17 @@ private fun Page(
                             .align(Alignment.CenterVertically)
                     ) {
                         GradientIcon(
-                            painter = painterResource(VR.drawable.ic_outline_info_24),
-                            colors = if (isUnrestricted) {
-                                listOf(MaterialTheme.theme.colors.primaryText02)
-                            } else {
-                                listOf(
-                                    MaterialTheme.theme.colors.gradient03A,
-                                    MaterialTheme.theme.colors.gradient03E
-                                )
-                            }
+                            GradientIconData(
+                                res = VR.drawable.ic_outline_info_24,
+                                colors = if (isUnrestricted) {
+                                    listOf(MaterialTheme.theme.colors.primaryText02)
+                                } else {
+                                    listOf(
+                                        MaterialTheme.theme.colors.gradient03A,
+                                        MaterialTheme.theme.colors.gradient03E
+                                    )
+                                }
+                            )
                         )
                     }
 

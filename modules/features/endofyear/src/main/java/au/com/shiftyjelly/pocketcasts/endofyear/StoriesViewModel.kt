@@ -9,29 +9,20 @@ import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
 import au.com.shiftyjelly.pocketcasts.endofyear.ShareableTextProvider.ShareTextData
 import au.com.shiftyjelly.pocketcasts.endofyear.StoriesViewModel.State.Loaded.SegmentsData
-import au.com.shiftyjelly.pocketcasts.models.type.Subscription
-import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.repositories.endofyear.EndOfYearManager
 import au.com.shiftyjelly.pocketcasts.repositories.endofyear.stories.Story
-import au.com.shiftyjelly.pocketcasts.repositories.subscription.FreeTrial
-import au.com.shiftyjelly.pocketcasts.repositories.subscription.SubscriptionManager
 import au.com.shiftyjelly.pocketcasts.utils.FileUtilWrapper
 import au.com.shiftyjelly.pocketcasts.utils.SentryHelper
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.UserTier
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
 import java.util.Timer
 import javax.inject.Inject
 import kotlin.concurrent.fixedRateTimer
-import kotlin.math.max
 import kotlin.math.roundToInt
 
 @HiltViewModel
@@ -39,9 +30,7 @@ class StoriesViewModel @Inject constructor(
     private val endOfYearManager: EndOfYearManager,
     private val fileUtilWrapper: FileUtilWrapper,
     private val shareableTextProvider: ShareableTextProvider,
-    private val analyticsTracker: AnalyticsTrackerWrapper,
-    private val settings: Settings,
-    private val subscriptionManager: SubscriptionManager,
+    private val analyticsTracker: AnalyticsTrackerWrapper
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow<State>(State.Loading())
@@ -66,38 +55,32 @@ class StoriesViewModel @Inject constructor(
 
     private var timer: Timer? = null
 
-    private val currentStoryIsPlus: Boolean
-        get() = stories.value[currentIndex].plusOnly
-    private var manuallySkipped = false
-
     init {
         viewModelScope.launch {
             loadStories()
         }
     }
 
-    private suspend fun CoroutineScope.loadStories() {
+    private suspend fun loadStories() {
         try {
             val onProgressChanged: (Float) -> Unit = { progress ->
                 mutableState.value = State.Loading(progress)
             }
-            combine(
-                subscriptionManager.freeTrialForSubscriptionTierFlow(Subscription.SubscriptionTier.PLUS),
-                settings.cachedSubscriptionStatus.flow
-            ) { freeTrial, _ ->
-                val currentUserTier = settings.userTier
-                val lastUserTier = (state.value as? State.Loaded)?.userTier
-                if (lastUserTier == currentUserTier) return@combine
-
-                endOfYearManager.downloadListeningHistory(onProgressChanged = onProgressChanged)
-                stories.value = endOfYearManager.loadStories()
-
-                updateState(
-                    freeTrial = freeTrial,
-                    currentUserTier = currentUserTier
+            endOfYearManager.downloadListeningHistory(onProgressChanged = onProgressChanged)
+            stories.value = endOfYearManager.loadStories()
+            val state = if (stories.value.isEmpty()) {
+                State.Error
+            } else {
+                State.Loaded(
+                    currentStory = stories.value[currentIndex],
+                    segmentsData = SegmentsData(
+                        xStartOffsets = List(numOfStories) { getXStartOffsetAtIndex(it) },
+                        widths = storyLengthsInMs.map { it / totalLengthInMs.toFloat() },
+                    )
                 )
-                if (state.value is State.Loaded) start()
-            }.stateIn(this)
+            }
+            mutableState.value = state
+            if (state is State.Loaded) start()
         } catch (ex: Exception) {
             val message = "Failed to load end of year stories."
             LogBuffer.e(LogBuffer.TAG_BACKGROUND_TASKS, ex, message)
@@ -106,29 +89,10 @@ class StoriesViewModel @Inject constructor(
         }
     }
 
-    private fun updateState(
-        freeTrial: FreeTrial,
-        currentUserTier: UserTier,
-    ) {
-        val state = if (stories.value.isEmpty()) {
-            State.Error
-        } else {
-            State.Loaded(
-                currentStory = stories.value[currentIndex],
-                segmentsData = SegmentsData(
-                    xStartOffsets = List(numOfStories) { getXStartOffsetAtIndex(it) },
-                    widths = storyLengthsInMs.map { it / totalLengthInMs.toFloat() },
-                ),
-                userTier = currentUserTier,
-                freeTrial = freeTrial,
-            )
-        }
-        mutableState.value = state
-    }
-
     fun start() {
-        val currentState = state.value as? State.Loaded ?: return
-        mutableState.value = currentState.copy(paused = false)
+        if (state.value !is State.Loaded) return
+
+        val currentState = state.value as State.Loaded
         val progressFraction =
             (PROGRESS_UPDATE_INTERVAL_MS / totalLengthInMs.toFloat())
                 .coerceAtMost(PROGRESS_END_VALUE)
@@ -136,22 +100,13 @@ class StoriesViewModel @Inject constructor(
         timer?.cancel()
         timer = fixedRateTimer(period = PROGRESS_UPDATE_INTERVAL_MS) {
             viewModelScope.launch {
-                var newProgress = (progress.value + progressFraction)
+                val newProgress = (progress.value + progressFraction)
                     .coerceIn(PROGRESS_START_VALUE, PROGRESS_END_VALUE)
 
                 if (newProgress.roundOff() == getXStartOffsetAtIndex(nextIndex).roundOff()) {
-                    manuallySkipped = false
-                    if (shouldSkipPlusStories()) {
-                        currentIndex = nextIndex + numberOfPlusStoriesAfterTheCurrentOne()
-                        newProgress = getXStartOffsetAtIndex(currentIndex)
-                    } else {
-                        currentIndex = nextIndex
-                    }
+                    currentIndex = nextIndex
                     mutableState.value =
-                        currentState.copy(
-                            currentStory = stories.value[currentIndex],
-                            paused = false,
-                        )
+                        currentState.copy(currentStory = stories.value[currentIndex])
                 }
 
                 mutableProgress.value = newProgress
@@ -161,23 +116,15 @@ class StoriesViewModel @Inject constructor(
     }
 
     fun skipPrevious() {
-        val prevIndex = (currentIndex.minus(max(numberOfPlusStoriesBeforeTheCurrentOne(), 1))).coerceAtLeast(0)
-        manuallySkipped = true
+        val prevIndex = (currentIndex.minus(1)).coerceAtLeast(0)
         skipToStoryAtIndex(prevIndex)
     }
 
     fun skipNext() {
-        currentIndex = if (currentStoryIsPlus) {
-            currentIndex + numberOfPlusStoriesAfterTheCurrentOne()
-        } else {
-            currentIndex
-        }
-        manuallySkipped = true
         skipToStoryAtIndex(nextIndex)
     }
 
     fun pause() {
-        mutableState.value = (state.value as State.Loaded).copy(paused = true)
         cancelTimer()
     }
 
@@ -190,10 +137,7 @@ class StoriesViewModel @Inject constructor(
         if (timer == null) start()
         mutableProgress.value = getXStartOffsetAtIndex(index)
         currentIndex = index
-        mutableState.value = (state.value as State.Loaded).copy(
-            currentStory = stories.value[index],
-            paused = false
-        )
+        mutableState.value = (state.value as State.Loaded).copy(currentStory = stories.value[index])
     }
 
     fun onRetryClicked() {
@@ -229,51 +173,6 @@ class StoriesViewModel @Inject constructor(
         }
     }
 
-    fun shouldShowUpsell() =
-        currentStoryIsPlus && !isPaidUser()
-
-    private fun numberOfPlusStoriesBeforeTheCurrentOne(): Int {
-        if (isPaidUser()) return 0
-
-        var currentStoryIndex = currentIndex
-        var numberOfStoriesToSkip = 0
-        while (currentStoryIndex > 0 && (stories.value[currentStoryIndex - 1]).plusOnly) {
-            numberOfStoriesToSkip += 1
-            currentStoryIndex -= 1
-        }
-
-        return numberOfStoriesToSkip
-    }
-
-    private fun numberOfPlusStoriesAfterTheCurrentOne(): Int {
-        if (isPaidUser()) return 0
-
-        var currentStoryIndex = currentIndex
-        var numberOfStoriesToSkip = 0
-        while (currentStoryIndex + 1 < numOfStories && (stories.value[currentStoryIndex + 1]).plusOnly) {
-            numberOfStoriesToSkip += 1
-            currentStoryIndex += 1
-        }
-
-        return numberOfStoriesToSkip
-    }
-
-    private fun isPaidUser(): Boolean {
-        val currentState = state.value as? State.Loaded ?: return false
-        return currentState.userTier != UserTier.Free
-    }
-
-    private fun nextStoryIsPlus() =
-        if (currentIndex + 1 < numOfStories) {
-            stories.value[currentIndex + 1].plusOnly
-        } else {
-            false
-        }
-
-    /* Whether some Plus stories should be skipped or not */
-    private fun shouldSkipPlusStories() =
-        !isPaidUser() && !manuallySkipped && currentStoryIsPlus && nextStoryIsPlus()
-
     private fun cancelTimer() {
         timer?.cancel()
         timer = null
@@ -299,16 +198,12 @@ class StoriesViewModel @Inject constructor(
 
     sealed class State {
         data class Loading(
-            val progress: Float = 0f,
+            val progress: Float = 0f
         ) : State()
-
         data class Loaded(
             val currentStory: Story?,
             val segmentsData: SegmentsData,
             val preparingShareText: Boolean = false,
-            val userTier: UserTier,
-            val freeTrial: FreeTrial,
-            val paused: Boolean = false,
         ) : State() {
             data class SegmentsData(
                 val widths: List<Float> = emptyList(),
@@ -319,16 +214,11 @@ class StoriesViewModel @Inject constructor(
         object Error : State()
     }
 
-    fun trackStoryOrUpsellShown() {
+    fun trackStoryShown() {
         val currentState = state.value as State.Loaded
         val currentStory = requireNotNull(currentState.currentStory)
-        val event = if (shouldShowUpsell()) {
-            AnalyticsEvent.END_OF_YEAR_UPSELL_SHOWN
-        } else {
-            AnalyticsEvent.END_OF_YEAR_STORY_SHOWN
-        }
         analyticsTracker.track(
-            event,
+            AnalyticsEvent.END_OF_YEAR_STORY_SHOWN,
             AnalyticsProp.storyShown(currentStory.identifier)
         )
     }

@@ -33,8 +33,9 @@ import au.com.shiftyjelly.pocketcasts.compose.components.TextH50
 import au.com.shiftyjelly.pocketcasts.models.to.PlaybackEffects
 import au.com.shiftyjelly.pocketcasts.models.type.TrimMode
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
+import au.com.shiftyjelly.pocketcasts.wear.theme.theme
+import au.com.shiftyjelly.pocketcasts.wear.ui.ToggleChip
 import au.com.shiftyjelly.pocketcasts.wear.ui.component.ScreenHeaderChip
-import au.com.shiftyjelly.pocketcasts.wear.ui.settings.ToggleChip
 import com.google.android.horologist.compose.layout.ScalingLazyColumn
 import com.google.android.horologist.compose.layout.ScalingLazyColumnState
 import com.google.android.horologist.compose.layout.belowTimeTextPreview
@@ -167,10 +168,7 @@ private fun SpeedChip(
                             contentDescription = stringResource(LR.string.player_effects_speed_up),
                         )
                     }
-                    TextH30(
-                        text = String.format("%.1fx", state.playbackEffects.playbackSpeed),
-                        color = MaterialTheme.colors.onPrimary,
-                    )
+                    TextH30(text = String.format("%.1fx", state.playbackEffects.playbackSpeed))
                     IconButton(onClick = onPlusClicked) {
                         Icon(
                             painter = painterResource(IR.drawable.plus_simple),
@@ -205,7 +203,6 @@ fun TrimSilenceSlider(
             TextH50(
                 text = stringResource(id = LR.string.player_effects_trim_silence),
                 fontWeight = FontWeight.W700,
-                color = MaterialTheme.colors.onPrimary,
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
@@ -229,7 +226,7 @@ fun TrimSilenceSlider(
             steps = 2,
             segmented = true,
             colors = InlineSliderDefaults.colors(
-                selectedBarColor = MaterialTheme.colors.onSurface
+                selectedBarColor = MaterialTheme.theme.colors.support05
             )
         )
     }
@@ -242,7 +239,7 @@ fun TrimSilenceSlider(
     showBackground = true
 )
 @Composable
-private fun EffectsScreenDarkPreview() {
+fun EffectsScreenDarkPreview() {
     AppTheme(themeType = Theme.ThemeType.DARK) {
         Content(
             columnState = belowTimeTextPreview(),

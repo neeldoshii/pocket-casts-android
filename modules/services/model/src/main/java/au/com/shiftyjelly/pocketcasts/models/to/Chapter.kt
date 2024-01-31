@@ -1,15 +1,20 @@
 package au.com.shiftyjelly.pocketcasts.models.to
 
 import okhttp3.HttpUrl
+import kotlin.math.roundToInt
 
 data class Chapter(
     val title: String,
+    val url: HttpUrl?,
     var startTime: Int,
     var endTime: Int,
-    val url: HttpUrl? = null,
-    val imagePath: String? = null,
-    val mimeType: String? = null,
-    var index: Int = 0
+    val startOffset: Long,
+    val endOffset: Long,
+    val imagePath: String?,
+    val mimeType: String?,
+    var played: Boolean = false,
+    var index: Int = 0,
+    var progress: Float = 0.0f
 ) {
 
     val isImagePresent: Boolean
@@ -18,7 +23,7 @@ data class Chapter(
     val isValid: Boolean
         get() = startTime >= 0 && endTime > 0
 
-    val duration: Int
+    val lengthTime: Int
         get() = endTime - startTime
 
     fun containsTime(time: Int): Boolean {
@@ -29,23 +34,19 @@ data class Chapter(
         return endTime <= currentTimeMs && endTime != -1
     }
 
-    fun remainingTime(playbackPositionMs: Int): String {
-        val progress = calculateProgress(playbackPositionMs)
+    fun remainingTime(): String {
         val length = endTime - startTime
         val remaining = length * (1f - progress)
         val minutesRemaining = remaining / 1000f / 60f
-        return if (minutesRemaining >= 1) {
-            "${minutesRemaining.toInt()}m"
+        if (minutesRemaining >= 1) {
+            return "${minutesRemaining.roundToInt()}m"
         } else {
             val secondsRemaining = remaining / 1000f
-            "${secondsRemaining.toInt()}s"
+            return "${secondsRemaining.roundToInt()}s"
         }
     }
 
-    fun calculateProgress(playbackPositionMs: Int): Float {
-        if (playbackPositionMs == 0 || playbackPositionMs < startTime || playbackPositionMs > endTime || duration <= 0) {
-            return 0f
-        }
-        return (playbackPositionMs - startTime).toFloat() / duration.toFloat()
+    fun progressPercentage(): Int {
+        return (progress * 100f).roundToInt()
     }
 }

@@ -3,7 +3,7 @@ package au.com.shiftyjelly.pocketcasts.repositories.playback
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import au.com.shiftyjelly.pocketcasts.analytics.SourceView
+import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.PodcastManager
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import dagger.hilt.android.AndroidEntryPoint
@@ -28,7 +28,7 @@ class PlayerBroadcastReceiver : BroadcastReceiver() {
 
     @Inject lateinit var podcastManager: PodcastManager
     @Inject lateinit var playbackManager: PlaybackManager
-    private val sourceView = SourceView.PLAYER_BROADCAST_ACTION
+    private val playbackSource = AnalyticsSource.PLAYER_BROADCAST_ACTION
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == INTENT_ACTION_REFRESH_PODCASTS) {
@@ -53,26 +53,26 @@ class PlayerBroadcastReceiver : BroadcastReceiver() {
     }
 
     private fun skipBackward() {
-        playbackManager.skipBackward(sourceView = sourceView)
+        playbackManager.skipBackward(playbackSource = playbackSource)
     }
 
     private fun skipForward() {
-        playbackManager.skipForward(sourceView = sourceView)
+        playbackManager.skipForward(playbackSource = playbackSource)
     }
 
     private fun pause() {
-        playbackManager.pause(sourceView = sourceView)
+        playbackManager.pause(playbackSource = playbackSource)
     }
 
     private fun play() {
-        playbackManager.playQueue(sourceView = sourceView)
+        playbackManager.playQueue(playbackSource = playbackSource)
     }
 
     private fun playNext() {
-        playbackManager.playNextInQueue(sourceView = sourceView)
+        playbackManager.playNextInQueue(playbackSource = playbackSource)
     }
 
     private fun stop() {
-        playbackManager.stopAsync(sourceView = sourceView)
+        playbackManager.stopAsync(playbackSource = playbackSource)
     }
 }

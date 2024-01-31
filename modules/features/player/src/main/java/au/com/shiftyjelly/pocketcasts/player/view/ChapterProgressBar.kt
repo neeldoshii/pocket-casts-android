@@ -8,7 +8,6 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
-import au.com.shiftyjelly.pocketcasts.ui.helper.colorIntWithAlpha
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
 import au.com.shiftyjelly.pocketcasts.utils.extensions.dpToPx
@@ -34,16 +33,8 @@ class ChapterProgressBar @JvmOverloads constructor(
     var theme: Theme.ThemeType = Theme.ThemeType.DARK
         set(value) {
             field = value
-            backgroundPaint.color = when {
-                field.darkTheme -> ThemeColor.playerContrast06(field)
-                field == Theme.ThemeType.LIGHT_CONTRAST -> ThemeColor.primaryUi05(field)
-                else -> ThemeColor.primaryUi02(field)
-            }
-            progressPaint.color = when {
-                field == Theme.ThemeType.ROSE -> ThemeColor.primaryIcon02Selected(field).colorIntWithAlpha(25)
-                field.darkTheme -> ThemeColor.playerContrast06(field).colorIntWithAlpha(25)
-                else -> Color.BLACK.colorIntWithAlpha(25)
-            }
+            backgroundPaint.color = ThemeColor.playerContrast06(field)
+            progressPaint.color = ThemeColor.playerContrast06(field)
         }
 
     val backgroundPaint = Paint().apply {
@@ -51,7 +42,7 @@ class ChapterProgressBar @JvmOverloads constructor(
         this.style = Paint.Style.FILL
     }
 
-    var progressPaint = Paint().apply {
+    val progressPaint = Paint().apply {
         this.color = Color.argb(50, 255, 255, 255)
         this.style = Paint.Style.FILL
     }
@@ -64,10 +55,15 @@ class ChapterProgressBar @JvmOverloads constructor(
         clipPath = Path().apply { addRoundRect(backgroundDrawRect, cornerRadius, cornerRadius, Path.Direction.CW) }
     }
 
-    override fun onDraw(canvas: Canvas) {
+    override fun onDraw(canvas: Canvas?) {
         super.onDraw(canvas)
-        canvas.clipPath(clipPath)
-        canvas.drawRect(backgroundDrawRect, backgroundPaint)
-        canvas.drawRect(progressDrawRect, progressPaint)
+        canvas?.clipPath(clipPath)
+        canvas?.drawRect(backgroundDrawRect, backgroundPaint)
+        canvas?.drawRect(progressDrawRect, progressPaint)
+    }
+
+    override fun dispatchDraw(canvas: Canvas?) {
+
+        super.dispatchDraw(canvas)
     }
 }

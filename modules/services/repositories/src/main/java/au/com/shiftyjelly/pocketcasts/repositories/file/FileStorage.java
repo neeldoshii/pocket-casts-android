@@ -166,7 +166,7 @@ public class FileStorage {
 	}
 	
 	private final static void addNoMediaFile(File folder, Settings settings) {
-		if (folder == null || !folder.exists()) {
+		if (folder == null || !folder.exists() || settings.allowOtherAppsAccessToEpisodes()) {
 			return;
 		}
 		File file = new File(folder, ".nomedia");
@@ -322,8 +322,7 @@ public class FileStorage {
 							if (fileName.length() < 36) {
 								continue;
 							}
-							//noinspection deprecation
-							PodcastEpisode episode = episodeManager.findByUuidSync(fileName);
+							PodcastEpisode episode = episodeManager.findByUuid(fileName);
 							if (episode != null) {
 								// Delete the original file if it is already there
 								if (!StringUtil.isBlank(episode.getDownloadedFilePath())) {
@@ -439,8 +438,7 @@ public class FileStorage {
 					if (uuid.length() != 36) {
 						continue;
 					}
-					//noinspection deprecation
-					PodcastEpisode episode = episodeManager.findByUuidSync(uuid);
+					PodcastEpisode episode = episodeManager.findByUuid(uuid);
 					if (episode != null) {
 						if (episode.getDownloadedFilePath() != null && new File(episode.getDownloadedFilePath()).exists() && episode.isDownloaded()) {
 							// skip as the episode download already exists

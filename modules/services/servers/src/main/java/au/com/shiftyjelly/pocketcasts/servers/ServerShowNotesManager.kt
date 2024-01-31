@@ -1,124 +1,165 @@
 package au.com.shiftyjelly.pocketcasts.servers
 
-import au.com.shiftyjelly.pocketcasts.servers.podcast.PodcastCacheServerManager
-import au.com.shiftyjelly.pocketcasts.servers.podcast.ShowNotesResponse
-import au.com.shiftyjelly.pocketcasts.servers.shownotes.ShowNotesState
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import android.os.Handler
+import android.os.Looper
+import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.servers.di.ShowNotesCache
+import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
+import io.reactivex.Completable
+import okhttp3.CacheControl
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import org.json.JSONObject
 import timber.log.Timber
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 @Singleton
-class ServerShowNotesManager @Inject constructor(
-    private val podcastCacheServerManager: PodcastCacheServerManager
-) {
+class ServerShowNotesManager @Inject constructor(@ShowNotesCache private val httpShowNotesCache: OkHttpClient) {
 
-    /**
-     * Check the cache for show notes then download them if not found or update the cache.
-     */
-    fun loadShowNotesFlow(
-        podcastUuid: String,
-        episodeUuid: String,
-        persistImageUrls: suspend (ShowNotesResponse) -> Unit,
-    ): Flow<ShowNotesState> {
-        return flow {
-            emit(ShowNotesState.Loading)
-            var loaded = false
-            try {
-                // load the cache version first for speed
-                val showNotesCached = findShowNotesInCache(podcastUuid = podcastUuid, episodeUuid = episodeUuid)
-                if (!showNotesCached.isNullOrBlank()) {
-                    emit(ShowNotesState.Loaded(showNotesCached))
-                    loaded = true
-                }
-                // download or update cache
-                val showNotesDownloaded =
-                    downloadShowNotes(
-                        podcastUuid = podcastUuid,
-                        episodeUuid = episodeUuid,
-                        persistImageUrls = persistImageUrls,
-                    )
-                if (showNotesDownloaded != null) {
-                    if (showNotesDownloaded != showNotesCached || !loaded) {
-                        emit(ShowNotesState.Loaded(showNotesDownloaded))
-                        loaded = true
+    fun cacheShowNotes(episodeUuid: String): Completable {
+        return Completable.fromAction {
+            val url = buildUrl(episodeUuid)
+            val requestCache = buildCachedShowNotesRequest(url)
+            httpShowNotesCache.newCall(requestCache).execute().use { cachedResponse ->
+                val cachedNotes = getShowNotesFromResponse(cachedResponse)
+                // only download if not cached already
+                if (cachedNotes.isNullOrEmpty()) {
+                    // download to cache
+                    val request = buildNetworkShowNotesRequest(url)
+                    httpShowNotesCache.newCall(request).execute().use { response ->
+                        Timber.i("Show notes cached %s %s", episodeUuid, if (response.isSuccessful) "Successful" else "Failed")
                     }
-                } else {
-                    emit(ShowNotesState.NotFound)
                 }
-            } catch (e: Exception) {
+            }
+        }.doOnError { throwable ->
+            LogBuffer.e(LogBuffer.TAG_BACKGROUND_TASKS, throwable, "Unable to cache show notes.")
+            Timber.e(throwable)
+        }
+    }
+
+    fun loadShowNotes(episodeUuid: String, callback: CachedServerCallback<String>?) {
+        val url = buildUrl(episodeUuid)
+
+        val uiHandler = if (callback == null) null else Handler(Looper.getMainLooper())
+
+        // load the cache version first for speed
+        loadCachedShowNotes(
+            url,
+            object : ShowNotesListener {
+                override fun complete(showNotes: String?) {
+                    if (showNotes != null && showNotes.isNotBlank()) {
+                        uiHandler?.post { callback?.cachedDataFound(showNotes) }
+                        return
+                    }
+                    // check the server for an updated version
+                    loadNetworkShowNotes(url, showNotes, uiHandler, callback)
+                }
+            }
+        )
+    }
+
+    suspend fun loadShowNotes(episodeUuid: String): String? =
+        suspendCoroutine { cont ->
+            loadShowNotes(
+                episodeUuid,
+                object : CachedServerCallback<String> {
+                    override fun cachedDataFound(data: String) {
+                        cont.resume(data)
+                    }
+
+                    override fun networkDataFound(data: String) {
+                        cont.resume(data)
+                    }
+
+                    override fun notFound() {
+                        cont.resume(null)
+                    }
+                }
+            )
+        }
+
+    private fun buildUrl(episodeUuid: String): String {
+        return Settings.SERVER_CACHE_URL + "/mobile/episode/show_notes/" + episodeUuid
+    }
+
+    private fun loadCachedShowNotes(url: String, listener: ShowNotesListener) {
+        val requestCache = buildCachedShowNotesRequest(url)
+
+        httpShowNotesCache.newCall(requestCache).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
                 Timber.e(e)
-                // only emit error if we haven't already loaded something
-                if (!loaded) {
-                    emit(ShowNotesState.Error(e))
+                listener.complete(null)
+            }
+
+            @Throws(IOException::class)
+            override fun onResponse(call: Call, response: Response) {
+                // callback if cached version found
+                if (response.code != 504) {
+                    listener.complete(getShowNotesFromResponse(response))
+                } else {
+                    listener.complete(null)
                 }
             }
-        }
+        })
     }
 
-    /**
-     * Download the show notes, if that fails try the cache.
-     */
-    suspend fun loadShowNotes(
-        podcastUuid: String,
-        episodeUuid: String,
-        persistImageUrls: suspend (ShowNotesResponse) -> Unit,
-    ): ShowNotesState {
-        var downloadException: Exception? = null
-        try {
-            val showNotesDownloaded =
-                downloadShowNotes(
-                    podcastUuid = podcastUuid,
-                    episodeUuid = episodeUuid,
-                    persistImageUrls = persistImageUrls,
-                )
-            if (showNotesDownloaded != null) {
-                return ShowNotesState.Loaded(showNotesDownloaded)
+    private fun loadNetworkShowNotes(url: String, cachedNotes: String?, uiHandler: Handler?, callback: CachedServerCallback<String>?) {
+        val request = buildNetworkShowNotesRequest(url)
+        httpShowNotesCache.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Timber.e(e)
+                if (cachedNotes.isNullOrBlank()) {
+                    uiHandler?.post { callback?.notFound() }
+                }
             }
-        } catch (e: Exception) {
-            Timber.e(e)
-            downloadException = e
-        }
 
-        try {
-            val showNotesCached = findShowNotesInCache(podcastUuid = podcastUuid, episodeUuid = episodeUuid)
-            if (showNotesCached != null) {
-                return ShowNotesState.Loaded(showNotesCached)
+            @Throws(IOException::class)
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) {
+                    val networkNotes = getShowNotesFromResponse(response)
+                    if (networkNotes != null && networkNotes.isNotBlank() && networkNotes != cachedNotes) {
+                        uiHandler?.post { callback?.networkDataFound(networkNotes) }
+                    } else {
+                        uiHandler?.post { callback?.notFound() }
+                    }
+                } else if (cachedNotes.isNullOrBlank()) {
+                    uiHandler?.post { callback?.notFound() }
+                }
             }
+        })
+    }
+
+    private fun buildNetworkShowNotesRequest(url: String): Request {
+        return Request.Builder()
+            .cacheControl(CacheControl.FORCE_NETWORK)
+            .url(url)
+            .build()
+    }
+
+    private fun buildCachedShowNotesRequest(url: String): Request {
+        return Request.Builder()
+            .cacheControl(CacheControl.Builder().onlyIfCached().build())
+            .url(url)
+            .build()
+    }
+
+    internal interface ShowNotesListener {
+        fun complete(showNotes: String?)
+    }
+
+    private fun getShowNotesFromResponse(response: Response): String? {
+        return try {
+            val json = JSONObject(response.body?.string() ?: "")
+            json.getString("show_notes")
         } catch (e: Exception) {
-            Timber.e(e)
+            null
         }
-
-        return if (downloadException != null) ShowNotesState.Error(downloadException) else ShowNotesState.NotFound
-    }
-
-    private suspend fun findShowNotesInCache(podcastUuid: String, episodeUuid: String): String? {
-        val response = podcastCacheServerManager.getShowNotesCache(podcastUuid = podcastUuid) ?: return null
-        return response.findEpisode(episodeUuid)?.showNotes
-    }
-
-    private suspend fun downloadShowNotes(
-        podcastUuid: String,
-        episodeUuid: String,
-        persistImageUrls: suspend (ShowNotesResponse) -> Unit,
-    ): String? {
-        if (podcastUuid.isBlank() || episodeUuid.isBlank()) {
-            return null
-        }
-        val response = podcastCacheServerManager.getShowNotes(podcastUuid = podcastUuid)
-        persistImageUrls(response)
-        return response.findEpisode(episodeUuid)?.showNotes
-    }
-
-    suspend fun downloadToCacheShowNotes(
-        podcastUuid: String,
-        persistImageUrls: suspend (ShowNotesResponse) -> Unit,
-    ) {
-        if (podcastUuid.isBlank()) {
-            return
-        }
-        val response = podcastCacheServerManager.getShowNotes(podcastUuid = podcastUuid)
-        persistImageUrls(response)
     }
 }

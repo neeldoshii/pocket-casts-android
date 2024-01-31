@@ -17,8 +17,9 @@ import au.com.shiftyjelly.pocketcasts.repositories.sync.SyncManager
 import au.com.shiftyjelly.pocketcasts.servers.ServerCallback
 import au.com.shiftyjelly.pocketcasts.servers.ServerManager
 import au.com.shiftyjelly.pocketcasts.utils.FileUtil
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import okhttp3.Call
 import timber.log.Timber
@@ -35,7 +36,6 @@ class OpmlExporter(
     private val syncManager: SyncManager,
     private val context: Context,
     private val analyticsTracker: AnalyticsTrackerWrapper,
-    private val applicationScope: CoroutineScope,
 ) {
 
     companion object {
@@ -92,11 +92,12 @@ class OpmlExporter(
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     private fun exportPodcasts() {
         analyticsTracker.track(AnalyticsEvent.SETTINGS_IMPORT_EXPORT_STARTED)
         showProgressDialog()
 
-        applicationScope.launch(Dispatchers.IO) {
+        GlobalScope.launch(Dispatchers.IO) {
             val uuidToTitle = podcastManager.findSubscribed().associateBy({ it.uuid }, { it.title })
             val uuids = uuidToTitle.keys.toList()
 

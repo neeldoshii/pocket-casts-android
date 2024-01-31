@@ -16,15 +16,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.constraintlayout.widget.ConstraintLayout
 import au.com.shiftyjelly.pocketcasts.account.ProfileCircleView
+import au.com.shiftyjelly.pocketcasts.account.onboarding.components.SubscriptionBadge
 import au.com.shiftyjelly.pocketcasts.compose.AppTheme
-import au.com.shiftyjelly.pocketcasts.compose.images.SubscriptionBadge
 import au.com.shiftyjelly.pocketcasts.localization.extensions.getStringPluralDaysMonthsOrYears
 import au.com.shiftyjelly.pocketcasts.localization.extensions.getStringPluralSecondsMinutesHoursDaysOrYears
 import au.com.shiftyjelly.pocketcasts.models.to.SignInState
 import au.com.shiftyjelly.pocketcasts.models.to.SubscriptionStatus
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionFrequency
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionPlatform
-import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionTier
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionType
 import au.com.shiftyjelly.pocketcasts.ui.extensions.getThemeColor
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
@@ -33,8 +32,6 @@ import au.com.shiftyjelly.pocketcasts.utils.TimeConstants
 import au.com.shiftyjelly.pocketcasts.utils.Util
 import au.com.shiftyjelly.pocketcasts.utils.days
 import au.com.shiftyjelly.pocketcasts.utils.extensions.toLocalizedFormatLongStyle
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import java.util.Date
 import au.com.shiftyjelly.pocketcasts.images.R as IR
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
@@ -112,16 +109,16 @@ open class UserView @JvmOverloads constructor(
 
     private fun daysLeft(signInState: SignInState.SignedIn, maxDays: Int): Int? {
         val timeInXDays = Date(Date().time + maxDays.days())
-        val paidStatus = signInState.subscriptionStatus as? SubscriptionStatus.Paid
-        if (paidStatus != null && paidStatus.expiry.before(timeInXDays)) {
+        val plusStatus = signInState.subscriptionStatus as? SubscriptionStatus.Plus
+        if (plusStatus != null && plusStatus.expiry.before(timeInXDays)) {
             // probably shouldn't be do straight millisecond maths because of day light savings
-            return ((paidStatus.expiry.time - Date().time) / TimeConstants.MILLISECONDS_IN_ONE_DAY).toInt()
+            return ((plusStatus.expiry.time - Date().time) / TimeConstants.MILLISECONDS_IN_ONE_DAY).toInt()
         }
         return null
     }
 
     private fun setDaysRemainingTextIfNeeded(signInState: SignInState.SignedIn) {
-        val status = ((signInState as? SignInState.SignedIn)?.subscriptionStatus as? SubscriptionStatus.Paid) ?: return
+        val status = ((signInState as? SignInState.SignedIn)?.subscriptionStatus as? SubscriptionStatus.Plus) ?: return
         if (status.autoRenew) {
             return
         }
@@ -224,16 +221,10 @@ class ExpandedUserView @JvmOverloads constructor(
                 lblPaymentStatus.text = context.getString(LR.string.profile_free_account)
                 lblSignInStatus?.text = ""
             }
-            is SubscriptionStatus.Paid -> {
+            is SubscriptionStatus.Plus -> {
                 val activeSubscription = status.subscriptions.getOrNull(status.index)
-                if (activeSubscription == null ||
-                    if (FeatureFlag.isEnabled(Feature.ADD_PATRON_ENABLED)) {
-                        activeSubscription.tier in listOf(SubscriptionTier.PATRON, SubscriptionTier.PLUS)
-                    } else {
-                        activeSubscription.type == SubscriptionType.PLUS
-                    }
-                ) {
-                    setupLabelsForPaidUser(status, signInState)
+                if (activeSubscription == null || activeSubscription.type == SubscriptionType.PLUS) {
+                    setupLabelsForPlusUser(status, signInState)
                 } else {
                     setupLabelsForSupporter(activeSubscription)
                 }
@@ -241,7 +232,7 @@ class ExpandedUserView @JvmOverloads constructor(
         }
     }
 
-    private fun setupLabelsForPaidUser(status: SubscriptionStatus.Paid, signInState: SignInState) {
+    private fun setupLabelsForPlusUser(status: SubscriptionStatus.Plus, signInState: SignInState) {
         if (status.autoRenew) {
             val strMonthly = context.getString(LR.string.profile_monthly)
             val strYearly = context.getString(LR.string.profile_yearly)

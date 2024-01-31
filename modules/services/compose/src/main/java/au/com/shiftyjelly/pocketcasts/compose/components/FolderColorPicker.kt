@@ -57,7 +57,7 @@ private fun ColorSelectCircle(color: Color, selected: Boolean, onClick: () -> Un
 
 @Preview(showBackground = true)
 @Composable
-private fun ColorPickerLightPreview() {
+fun ColorPickerLightPreview() {
     AppTheme(Theme.ThemeType.LIGHT) {
         FolderColorPicker(selectedId = 0, onClick = {})
     }
@@ -65,7 +65,7 @@ private fun ColorPickerLightPreview() {
 
 @Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
-private fun ColorPickerDarkPreview() {
+fun ColorPickerDarkPreview() {
     AppTheme(Theme.ThemeType.DARK) {
         FolderColorPicker(selectedId = 0, onClick = {})
     }

@@ -69,53 +69,53 @@ class CloudSettingsFragment : BaseFragment() {
         val lblDeleteCloudFileAfterPlaying = binding.lblDeleteCloudFileAfterPlaying
         val swtDeleteCloudFileAfterPlaying = binding.swtDeleteCloudFileAfterPlaying
         viewModel.signInState.observe(viewLifecycleOwner) { signInState ->
-            lblDeleteCloudFileAfterPlaying.isVisible = signInState.isSignedInAsPlusOrPatron
-            swtDeleteCloudFileAfterPlaying.isVisible = signInState.isSignedInAsPlusOrPatron
+            lblDeleteCloudFileAfterPlaying.isVisible = signInState.isSignedInAsPlus
+            swtDeleteCloudFileAfterPlaying.isVisible = signInState.isSignedInAsPlus
 
-            binding.plusLayout.isEnabled = signInState.isSignedInAsPlusOrPatron
-            binding.plusLayout.alpha = if (signInState.isSignedInAsPlusOrPatron) 1.0f else 0.5f
-            binding.imgLock.isVisible = !signInState.isSignedInAsPlusOrPatron
-            binding.btnLock.isVisible = !signInState.isSignedInAsPlusOrPatron
+            binding.plusLayout.isEnabled = signInState.isSignedInAsPlus
+            binding.plusLayout.alpha = if (signInState.isSignedInAsPlus) 1.0f else 0.5f
+            binding.imgLock.isVisible = !signInState.isSignedInAsPlus
+            binding.btnLock.isVisible = !signInState.isSignedInAsPlus
 
-            binding.swtAutoUploadToCloud.isEnabled = signInState.isSignedInAsPlusOrPatron
-            binding.swtAutoDownloadFromCloud.isEnabled = signInState.isSignedInAsPlusOrPatron
-            binding.swtCloudOnlyOnWiFi.isEnabled = signInState.isSignedInAsPlusOrPatron
+            binding.swtAutoUploadToCloud.isEnabled = signInState.isSignedInAsPlus
+            binding.swtAutoDownloadFromCloud.isEnabled = signInState.isSignedInAsPlus
+            binding.swtCloudOnlyOnWiFi.isEnabled = signInState.isSignedInAsPlus
 
-            binding.upgradeLayout.isVisible = !signInState.isSignedInAsPlusOrPatron && !settings.getUpgradeClosedCloudSettings()
+            binding.upgradeLayout.isVisible = !signInState.isSignedInAsPlus && !settings.getUpgradeClosedCloudSettings()
         }
 
         with(binding.swtAutoAddToUpNext) {
-            isChecked = settings.cloudAddToUpNext.value
+            isChecked = settings.getCloudAddToUpNext()
             setOnCheckedChangeListener { _, isChecked ->
                 viewModel.setAddToUpNext(isChecked)
             }
         }
         with(binding.swtDeleteLocalFileAfterPlaying) {
-            isChecked = settings.deleteLocalFileAfterPlaying.value
+            isChecked = settings.getDeleteLocalFileAfterPlaying()
             setOnCheckedChangeListener { _, isChecked ->
                 viewModel.setDeleteLocalFileAfterPlaying(isChecked)
             }
         }
         with(binding.swtDeleteCloudFileAfterPlaying) {
-            isChecked = settings.deleteCloudFileAfterPlaying.value
+            isChecked = settings.getDeleteCloudFileAfterPlaying()
             setOnCheckedChangeListener { _, isChecked ->
                 viewModel.setDeleteCloudFileAfterPlaying(isChecked)
             }
         }
         with(binding.swtAutoUploadToCloud) {
-            isChecked = settings.cloudAutoUpload.value
+            isChecked = settings.getCloudAutoUpload()
             setOnCheckedChangeListener { _, isChecked ->
                 viewModel.setCloudAutoUpload(isChecked)
             }
         }
         with(binding.swtAutoDownloadFromCloud) {
-            isChecked = settings.cloudAutoDownload.value
+            isChecked = settings.getCloudAutoDownload()
             setOnCheckedChangeListener { _, isChecked ->
                 viewModel.setCloudAutoDownload(isChecked)
             }
         }
         with(binding.swtCloudOnlyOnWiFi) {
-            isChecked = settings.cloudDownloadOnlyOnWifi.value
+            isChecked = settings.getCloudOnlyWifi()
             setOnCheckedChangeListener { _, isChecked ->
                 viewModel.setCloudOnlyWifi(isChecked)
             }
@@ -144,7 +144,7 @@ class CloudSettingsFragment : BaseFragment() {
     private fun openUpgradeSheet() {
         OnboardingLauncher.openOnboardingFlow(
             activity,
-            OnboardingFlow.Upsell(OnboardingUpgradeSource.FILES)
+            OnboardingFlow.PlusUpsell(OnboardingUpgradeSource.FILES)
         )
     }
 }

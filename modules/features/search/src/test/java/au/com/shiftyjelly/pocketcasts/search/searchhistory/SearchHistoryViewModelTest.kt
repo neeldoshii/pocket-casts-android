@@ -5,7 +5,6 @@ import au.com.shiftyjelly.pocketcasts.models.to.SignInState
 import au.com.shiftyjelly.pocketcasts.models.to.SubscriptionStatus
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionFrequency
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionPlatform
-import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionTier
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionType
 import au.com.shiftyjelly.pocketcasts.repositories.searchhistory.SearchHistoryManager
 import au.com.shiftyjelly.pocketcasts.repositories.user.UserManager
@@ -36,7 +35,7 @@ class SearchHistoryViewModelTest {
     @Mock
     private lateinit var analyticsTracker: AnalyticsTrackerWrapper
 
-    private val subscriptionStatusPaid = SubscriptionStatus.Paid(
+    private val subscriptionStatusPlus = SubscriptionStatus.Plus(
         expiry = Date(),
         autoRenew = true,
         giftDays = 0,
@@ -44,14 +43,13 @@ class SearchHistoryViewModelTest {
         platform = SubscriptionPlatform.ANDROID,
         subscriptionList = emptyList(),
         type = SubscriptionType.PLUS,
-        tier = SubscriptionTier.PLUS,
         index = 0
     )
 
     private val subscriptionStatusFree = SubscriptionStatus.Free()
 
     @Test
-    fun `given paid subscription status and local + remote search, when search history shown, then folders included`() =
+    fun `given plus user and local + remote search, when search history shown, then folders included`() =
         runTest {
             val viewModel = initViewModel(isPlusUser = true, isOnlySearchRemote = false)
 
@@ -61,7 +59,7 @@ class SearchHistoryViewModelTest {
         }
 
     @Test
-    fun `given free subscription status and local + remote only search, when search history shown, then folders not included`() =
+    fun `given free user and local + remote only search, when search history shown, then folders not included`() =
         runTest {
             val viewModel = initViewModel(isPlusUser = false, isOnlySearchRemote = true)
 
@@ -71,7 +69,7 @@ class SearchHistoryViewModelTest {
         }
 
     @Test
-    fun `given paid subscription status and remote only search, when search history shown, then folders not included`() =
+    fun `given plus user and remote only search, when search history shown, then folders not included`() =
         runTest {
             val viewModel = initViewModel(isPlusUser = true, isOnlySearchRemote = true)
 
@@ -81,7 +79,7 @@ class SearchHistoryViewModelTest {
         }
 
     @Test
-    fun `given free subscription status and remote only search, when search history shown, then folders not included`() =
+    fun `given free user and remote only search, when search history shown, then folders not included`() =
         runTest {
             val viewModel = initViewModel(isPlusUser = false, isOnlySearchRemote = true)
 
@@ -99,7 +97,7 @@ class SearchHistoryViewModelTest {
                 Flowable.just(
                     SignInState.SignedIn(
                         email = "",
-                        subscriptionStatus = if (isPlusUser) subscriptionStatusPaid else subscriptionStatusFree
+                        subscriptionStatus = if (isPlusUser) subscriptionStatusPlus else subscriptionStatusFree
                     )
                 )
             )

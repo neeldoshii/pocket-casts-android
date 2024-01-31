@@ -3,7 +3,6 @@ package au.com.shiftyjelly.pocketcasts.settings
 import android.content.Context
 import android.os.StatFs
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -133,7 +132,6 @@ fun StorageSettingsView(
 
         Column(
             modifier
-                .background(MaterialTheme.theme.colors.primaryUi02)
                 .fillMaxHeight()
                 .verticalScroll(rememberScrollState())
         ) {

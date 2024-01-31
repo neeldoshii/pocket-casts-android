@@ -31,7 +31,7 @@
 
         <ListPreference
             android:key="notificationVibrate"
-            android:persistent="false"
+            android:persistent="true"
             android:summary=""
             android:title="@string/settings_notification_vibrate" />
 
@@ -42,14 +42,15 @@
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/settings" >
-        <ListPreference
-            android:key="overrideNotificationAudio"
-            android:title="@string/settings_notification_play_over"
-            android:persistent="false"/>
-
+        <SwitchPreference
+            android:defaultValue="false"
+            android:key="overrideAudioInterruption"
+            android:persistent="true"
+            android:summary="@string/settings_notification_play_over_summary"
+            android:title="@string/settings_notification_play_over" />
         <SwitchPreference
             android:key="hideNotificationOnPause"
-            android:persistent="false"
+            android:persistent="true"
             android:title="@string/settings_notification_hide_on_pause" />
     </PreferenceCategory>
 

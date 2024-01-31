@@ -64,7 +64,8 @@ class PromoCodeFragment : BaseFragment() {
                         binding.loadedGroup.isVisible = false
                         // We need to set this to true here so we know not to show the gift dialog.
                         // There is no way to know what type of gift the upgrade came via the API
-                        settings.freeGiftAcknowledged.set(true, needsSync = true)
+                        settings.setFreeGiftAcknowledged(true)
+                        settings.setFreeGiftAcknowledgedNeedsSync(true)
 
                         val result = Intent()
                         result.putExtra(AccountActivity.PROMO_CODE_RETURN_DESCRIPTION, it.response.description)

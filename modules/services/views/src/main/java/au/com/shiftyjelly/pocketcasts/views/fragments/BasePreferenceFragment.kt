@@ -25,11 +25,6 @@ abstract class BasePreferenceFragment : PreferenceFragmentCompat() {
         return root
     }
 
-    override fun onDestroyView() {
-        progressBar = null
-        super.onDestroyView()
-    }
-
     fun showLoading() {
         listView.visibility = View.GONE
         progressBar?.visibility = View.VISIBLE

@@ -15,13 +15,12 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Observer
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
+import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
-import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.entity.UserEpisode
 import au.com.shiftyjelly.pocketcasts.models.to.SignInState
 import au.com.shiftyjelly.pocketcasts.models.to.SubscriptionStatus
 import au.com.shiftyjelly.pocketcasts.models.type.UserEpisodeServerStatus
-import au.com.shiftyjelly.pocketcasts.player.view.bookmark.BookmarksContainerFragment
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.profile.R
 import au.com.shiftyjelly.pocketcasts.profile.cloud.CloudBottomSheetViewModel.Companion.DOWNLOAD
@@ -29,7 +28,6 @@ import au.com.shiftyjelly.pocketcasts.profile.cloud.CloudBottomSheetViewModel.Co
 import au.com.shiftyjelly.pocketcasts.profile.cloud.CloudBottomSheetViewModel.Companion.UPLOAD
 import au.com.shiftyjelly.pocketcasts.profile.cloud.CloudBottomSheetViewModel.Companion.UPLOAD_UPGRADE_REQUIRED
 import au.com.shiftyjelly.pocketcasts.profile.databinding.BottomSheetCloudFileBinding
-import au.com.shiftyjelly.pocketcasts.repositories.bookmark.BookmarkManager
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
 import au.com.shiftyjelly.pocketcasts.repositories.images.PodcastImageLoader
 import au.com.shiftyjelly.pocketcasts.repositories.images.into
@@ -43,8 +41,6 @@ import au.com.shiftyjelly.pocketcasts.ui.images.PodcastImageLoaderThemed
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
 import au.com.shiftyjelly.pocketcasts.utils.Network
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import au.com.shiftyjelly.pocketcasts.views.dialog.OptionsDialog
 import au.com.shiftyjelly.pocketcasts.views.helper.CloudDeleteHelper
 import au.com.shiftyjelly.pocketcasts.views.helper.WarningsHelper
@@ -52,7 +48,6 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.rx2.asObservable
 import javax.inject.Inject
 import au.com.shiftyjelly.pocketcasts.images.R as IR
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
@@ -83,7 +78,6 @@ class CloudFileBottomSheetFragment : BottomSheetDialogFragment() {
     @Inject lateinit var upNextQueue: UpNextQueue
     @Inject lateinit var warningsHelper: WarningsHelper
     @Inject lateinit var analyticsTracker: AnalyticsTrackerWrapper
-    @Inject lateinit var bookmarkManager: BookmarkManager
 
     var podcastImageLoader: PodcastImageLoader? = null
     private val viewModel: CloudBottomSheetViewModel by viewModels()
@@ -146,8 +140,7 @@ class CloudFileBottomSheetFragment : BottomSheetDialogFragment() {
 
                 binding.lblTitle.text = episode.title
                 val btnPlay = binding.btnPlay
-                val tintColor = view.context.getThemeColor(UR.attr.primary_icon_01)
-                btnPlay.setCircleTintColor(tintColor)
+                btnPlay.setCircleTintColor(btnPlay.context.getThemeColor(UR.attr.primary_interactive_01))
                 btnPlay.setPlaying(isPlaying, false)
                 btnPlay.setOnPlayClicked {
                     if (!isPlaying) {
@@ -214,17 +207,6 @@ class CloudFileBottomSheetFragment : BottomSheetDialogFragment() {
                     }
                 }
 
-                val layoutBookmark = binding.layoutBookmark
-                layoutBookmark.isVisible = FeatureFlag.isEnabled(Feature.BOOKMARKS_ENABLED)
-                layoutBookmark.setOnClickListener {
-                    dialog?.dismiss()
-                    viewModel.trackOptionTapped(CloudBottomSheetViewModel.BOOKMARKS)
-                    BookmarksContainerFragment.newInstance(
-                        episodeUuid = episodeUUID,
-                        sourceView = SourceView.FILES
-                    ).show(parentFragmentManager, "bookmarks_container")
-                }
-
                 val errorLayout = binding.errorLayout
                 val lblError = binding.lblError
                 val lblErrorDetail = binding.lblErrorDetail
@@ -243,16 +225,8 @@ class CloudFileBottomSheetFragment : BottomSheetDialogFragment() {
                 } else {
                     errorLayout.visibility = View.GONE
                 }
-                val userBookmarksObservable = bookmarkManager.findUserEpisodesBookmarksFlow().asObservable()
-                binding.fileStatusIconsView.setup(
-                    episode = episode,
-                    downloadProgressUpdates = downloadManager.progressUpdateRelay,
-                    playbackStateUpdates = playbackManager.playbackStateRelay,
-                    upNextChangesObservable = upNextQueue.changesObservable,
-                    userBookmarksObservable = userBookmarksObservable,
-                    hideErrorDetails = true,
-                    tintColor = tintColor,
-                )
+
+                binding.fileStatusIconsView.setup(episode, downloadManager.progressUpdateRelay, playbackManager.playbackStateRelay, upNextQueue.changesObservable, true)
 
                 binding.lblCloud.text = when (episode.serverStatus) {
                     UserEpisodeServerStatus.LOCAL -> getString(LR.string.profile_cloud_upload)
@@ -282,7 +256,7 @@ class CloudFileBottomSheetFragment : BottomSheetDialogFragment() {
                     viewModel.trackOptionTapped(UPLOAD_UPGRADE_REQUIRED)
                     OnboardingLauncher.openOnboardingFlow(
                         activity,
-                        OnboardingFlow.Upsell(OnboardingUpgradeSource.FILES)
+                        OnboardingFlow.PlusUpsell(OnboardingUpgradeSource.FILES)
                     )
                 }
 
@@ -315,7 +289,7 @@ class CloudFileBottomSheetFragment : BottomSheetDialogFragment() {
                 val layoutLockedCloud = binding.layoutLockedCloud
                 when (signInState) {
                     is SignInState.SignedIn -> {
-                        if (signInState.subscriptionStatus is SubscriptionStatus.Paid) {
+                        if (signInState.subscriptionStatus is SubscriptionStatus.Plus) {
                             layoutCloud.isVisible = true
                             layoutLockedCloud.isVisible = false
                         } else {
@@ -344,7 +318,7 @@ class CloudFileBottomSheetFragment : BottomSheetDialogFragment() {
 
     fun download(episode: UserEpisode, isOnWifi: Boolean) {
         viewModel.trackOptionTapped(DOWNLOAD)
-        if (settings.warnOnMeteredNetwork.value && !isOnWifi) {
+        if (settings.warnOnMeteredNetwork() && !isOnWifi) {
             warningsHelper.downloadWarning(episodeUUID, "user episode sheet")
                 .show(parentFragmentManager, "download_warning")
         } else {
@@ -354,8 +328,8 @@ class CloudFileBottomSheetFragment : BottomSheetDialogFragment() {
 
     private fun upload(episode: UserEpisode, isOnWifi: Boolean) {
         viewModel.trackOptionTapped(UPLOAD)
-        if (settings.warnOnMeteredNetwork.value && !isOnWifi) {
-            warningsHelper.uploadWarning(episodeUUID, source = SourceView.FILES)
+        if (settings.warnOnMeteredNetwork() && !isOnWifi) {
+            warningsHelper.uploadWarning(episodeUUID, source = AnalyticsSource.FILES)
                 .show(parentFragmentManager, "upload_warning")
         } else {
             viewModel.uploadEpisode(episode)

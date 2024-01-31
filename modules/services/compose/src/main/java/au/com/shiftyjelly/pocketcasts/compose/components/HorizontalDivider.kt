@@ -28,7 +28,7 @@ fun HorizontalDivider(
 
 @Preview(showBackground = true)
 @Composable
-private fun HorizontalDividerLightPreview() {
+fun HorizontalDividerLightPreview() {
     AppTheme(Theme.ThemeType.LIGHT) {
         Column(modifier = Modifier.padding(vertical = 10.dp)) {
             Divider()
@@ -38,7 +38,7 @@ private fun HorizontalDividerLightPreview() {
 
 @Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
-private fun HorizontalDividerDarkPreview() {
+fun HorizontalDividerDarkPreview() {
     AppTheme(Theme.ThemeType.DARK) {
         Column(modifier = Modifier.padding(vertical = 10.dp)) {
             Divider()

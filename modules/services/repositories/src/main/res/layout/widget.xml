@@ -5,8 +5,7 @@
     android:background="@drawable/widget_background"
     android:layoutDirection="ltr"
     android:clickable="true"
-    android:focusable="true"
-    android:theme="@style/PCWidgetTheme">
+    android:focusable="true">
 
     <FrameLayout
         android:id="@+id/widget_empty_player"
@@ -22,8 +21,7 @@
             android:layout_height="wrap_content"
             android:src="@drawable/widget_nothingloaded"
             android:layout_gravity="center"
-            android:alpha="0.4"
-            android:tint="?attr/colorOnPrimaryContainer"/>
+            android:alpha="0.4" />
 
     </FrameLayout>
 
@@ -69,15 +67,14 @@
                     android:layout_gravity="center"
                     android:paddingLeft="2dp"
                     android:paddingTop="4dp"
-                    android:textColor="?attr/colorOnPrimaryContainer"
+                    android:textColor="#FFF"
                     android:textSize="12sp" />
 
                 <ImageView
                     android:src="@drawable/widget_skipbackwards"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:tint="?attr/colorOnPrimaryContainer"/>
+                    android:layout_gravity="center" />
 
             </FrameLayout>
 
@@ -94,12 +91,10 @@
                     android:background="?android:attr/selectableItemBackground">
 
                     <ImageView
-                        android:src="@drawable/ic_play"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:layout_gravity="center"
-                        android:padding="16dp"
-                        android:tint="?attr/colorOnPrimaryContainer"/>
+                        android:src="@drawable/widget_play"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center" />
 
                 </FrameLayout>
 
@@ -115,8 +110,7 @@
                         android:src="@drawable/widget_pause"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:tint="?attr/colorOnPrimaryContainer"/>
+                        android:layout_gravity="center" />
 
                 </FrameLayout>
             </FrameLayout>
@@ -138,15 +132,14 @@
                     android:paddingRight="2dp"
                     android:layout_gravity="center"
                     android:paddingTop="4dp"
-                    android:textColor="?attr/colorOnPrimaryContainer"
+                    android:textColor="#FFF"
                     android:textSize="12sp" />
 
                 <ImageView
                     android:src="@drawable/widget_skipforwards"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:tint="?attr/colorOnPrimaryContainer"/>
+                    android:layout_gravity="center" />
 
             </FrameLayout>
 

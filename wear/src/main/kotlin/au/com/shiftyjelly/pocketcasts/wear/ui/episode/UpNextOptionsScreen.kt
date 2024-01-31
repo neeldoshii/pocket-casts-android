@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.wear.compose.foundation.lazy.items
+import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.wear.theme.WearAppTheme
 import au.com.shiftyjelly.pocketcasts.wear.ui.component.ScreenHeaderChip
 import au.com.shiftyjelly.pocketcasts.wear.ui.component.WatchListChip
@@ -65,7 +66,7 @@ private fun Content(
 @Preview
 @Composable
 private fun Preview() {
-    WearAppTheme {
+    WearAppTheme(Theme.ThemeType.DARK) {
         Content(
             columnState = ScalingLazyColumnState(),
             upNextOptions = listOf(

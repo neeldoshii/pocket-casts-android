@@ -8,7 +8,6 @@ import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodePlayingStatus
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeStatusEnum
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
-import au.com.shiftyjelly.pocketcasts.repositories.di.ApplicationScope
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadHelper
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
 import au.com.shiftyjelly.pocketcasts.repositories.extensions.calculateCombinedIconId
@@ -40,7 +39,6 @@ class PlaylistManagerImpl @Inject constructor(
     private val playlistUpdateAnalytics: PlaylistUpdateAnalytics,
     private val syncManager: SyncManager,
     @ApplicationContext private val context: Context,
-    @ApplicationScope private val applicationScope: CoroutineScope,
     appDatabase: AppDatabase
 ) : PlaylistManager, CoroutineScope {
 
@@ -56,7 +54,7 @@ class PlaylistManagerImpl @Inject constructor(
         get() = Dispatchers.Default
 
     private fun setupDefaultPlaylists() {
-        val existingNewRelease = playlistDao.findByUuidSync(NEWRELEASE_UUID)
+        val existingNewRelease = playlistDao.findByUUID(NEWRELEASE_UUID)
         if (existingNewRelease == null) {
             val newRelease = Playlist()
             newRelease.apply {
@@ -79,7 +77,7 @@ class PlaylistManagerImpl @Inject constructor(
             playlistDao.update(existingNewRelease)
         }
 
-        val existingInProgress = playlistDao.findByUuidSync(INPROGRESS_UUID)
+        val existingInProgress = playlistDao.findByUUID(INPROGRESS_UUID)
         if (existingInProgress == null) {
             val inProgress = Playlist()
             inProgress.apply {
@@ -125,12 +123,8 @@ class PlaylistManagerImpl @Inject constructor(
         return playlistDao.observeAll()
     }
 
-    override fun findByUuidSync(playlistUuid: String): Playlist? {
-        return playlistDao.findByUuidSync(playlistUuid)
-    }
-
-    override suspend fun findByUuid(playlistUuid: String): Playlist? {
-        return playlistDao.findByUuid(playlistUuid)
+    override fun findByUuid(playlistUuid: String): Playlist? {
+        return playlistDao.findByUUID(playlistUuid)
     }
 
     override fun findByUuidRx(playlistUuid: String): Maybe<Playlist> {
@@ -200,12 +194,7 @@ class PlaylistManagerImpl @Inject constructor(
     override fun create(playlist: Playlist): Long {
         val id = playlistDao.insert(playlist)
         if (countPlaylists() == 1 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
-            PocketCastsShortcuts.update(
-                playlistManager = this,
-                force = true,
-                coroutineScope = applicationScope,
-                context = context
-            )
+            PocketCastsShortcuts.update(this, true, context)
         }
         return id
     }
@@ -305,12 +294,7 @@ class PlaylistManagerImpl @Inject constructor(
         playlistDao.updateSortPositions(playlists)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
-            PocketCastsShortcuts.update(
-                playlistManager = this,
-                force = true,
-                coroutineScope = applicationScope,
-                context = context
-            )
+            PocketCastsShortcuts.update(this, true, context)
         }
     }
 
@@ -512,11 +496,32 @@ class PlaylistManagerImpl @Inject constructor(
         where.append("archived = 0")
 
         val playingEpisode = playbackManager?.getCurrentEpisode()?.uuid
-        val lastLoadedFromPodcastOrFilterUuid = settings.lastLoadedFromPodcastOrFilterUuid.value.uuid
-        if (playingEpisode != null && lastLoadedFromPodcastOrFilterUuid == playlist.uuid) {
-            where.insert(0, "(podcast_episodes.uuid = '$playingEpisode' OR (")
+        if (playingEpisode != null && playbackManager.lastLoadedFromPodcastOrPlaylistUuid == playlist.uuid) {
+            where.insert(0, "(episodes.uuid = '$playingEpisode' OR (")
             where.append("))")
         }
+    }
+
+    override fun countEpisodesNotCompleted(playlist: Playlist, episodeManager: EpisodeManager, playbackManager: PlaybackManager): Int {
+        return episodeManager.countEpisodesWhere("episodes.archived = 0 AND episodes.playing_status != " + EpisodePlayingStatus.COMPLETED.ordinal + " AND " + buildPlaylistWhere(playlist, null))
+    }
+
+    override fun countEpisodesDownloading(playlist: Playlist, episodeManager: EpisodeManager, playbackManager: PlaybackManager): Int {
+        return episodeManager.countEpisodesWhere(
+            "episodes.archived = 0 AND (episodes.episode_status = " + EpisodeStatusEnum.DOWNLOADING.ordinal + " OR episodes.episode_status = " + EpisodeStatusEnum.QUEUED.ordinal + " OR episodes.episode_status = " + EpisodeStatusEnum.WAITING_FOR_WIFI.ordinal + " OR episodes.episode_status = " + EpisodeStatusEnum.WAITING_FOR_POWER.ordinal + ") AND " + buildPlaylistWhere(
+                playlist,
+                null
+            )
+        )
+    }
+
+    override fun countEpisodesNotDownloaded(playlist: Playlist, episodeManager: EpisodeManager, playbackManager: PlaybackManager): Int {
+        return episodeManager.countEpisodesWhere(
+            "episodes.archived = 0 AND (episodes.episode_status = " + EpisodeStatusEnum.NOT_DOWNLOADED.ordinal + " OR episodes.episode_status = " + EpisodeStatusEnum.DOWNLOAD_FAILED.ordinal + ") AND " + buildPlaylistWhere(
+                playlist,
+                null
+            )
+        )
     }
 
     private fun markAsNotSynced(playlist: Playlist) {

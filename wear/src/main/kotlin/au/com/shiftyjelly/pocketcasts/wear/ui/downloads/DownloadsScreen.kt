@@ -8,6 +8,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.wear.compose.foundation.lazy.items
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
+import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.wear.theme.WearAppTheme
 import au.com.shiftyjelly.pocketcasts.wear.ui.component.EpisodeChip
 import au.com.shiftyjelly.pocketcasts.wear.ui.component.ScreenHeaderChip
@@ -69,7 +70,7 @@ private fun Content(
 )
 @Composable
 private fun DownloadsScreenPreview() {
-    WearAppTheme {
+    WearAppTheme(Theme.ThemeType.DARK) {
         Content(
             columnState = ScalingLazyColumnState(),
             onItemClick = {},

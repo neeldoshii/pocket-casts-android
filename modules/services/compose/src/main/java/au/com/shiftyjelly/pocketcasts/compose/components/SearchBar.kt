@@ -138,7 +138,7 @@ fun SearchBarButton(
 
 @Preview(showBackground = true)
 @Composable
-private fun SearchBarLightPreview() {
+fun SearchBarLightPreview() {
     AppTheme(Theme.ThemeType.LIGHT) {
         SearchBarPreview()
     }
@@ -146,7 +146,7 @@ private fun SearchBarLightPreview() {
 
 @Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
-private fun SearchBarDarkPreview() {
+fun SearchBarDarkPreview() {
     AppTheme(Theme.ThemeType.DARK) {
         SearchBarPreview()
     }

@@ -1,8 +1,6 @@
 package au.com.shiftyjelly.pocketcasts.account.onboarding
 
-import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.Composable
-import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -26,8 +24,7 @@ fun OnboardingFlowComposable(
     flow: OnboardingFlow,
     exitOnboarding: () -> Unit,
     completeOnboardingToDiscover: () -> Unit,
-    signInState: SignInState,
-    navController: NavHostController = rememberNavController(),
+    signInState: SignInState
 ) {
     if (flow is OnboardingFlow.PlusAccountUpgrade) {
         Content(
@@ -35,8 +32,7 @@ fun OnboardingFlowComposable(
             flow = flow,
             exitOnboarding = exitOnboarding,
             completeOnboardingToDiscover = completeOnboardingToDiscover,
-            signInState = signInState,
-            navController = navController,
+            signInState = signInState
         )
     } else {
         AppThemeWithBackground(theme) {
@@ -45,8 +41,7 @@ fun OnboardingFlowComposable(
                 flow = flow,
                 exitOnboarding = exitOnboarding,
                 completeOnboardingToDiscover = completeOnboardingToDiscover,
-                signInState = signInState,
-                navController = navController,
+                signInState = signInState
             )
         }
     }
@@ -58,9 +53,10 @@ private fun Content(
     flow: OnboardingFlow,
     exitOnboarding: () -> Unit,
     completeOnboardingToDiscover: () -> Unit,
-    signInState: SignInState,
-    navController: NavHostController,
+    signInState: SignInState
 ) {
+    val navController = rememberNavController()
+
     val startDestination = when (flow) {
         OnboardingFlow.LoggedOut,
         is OnboardingFlow.PlusAccountUpgradeNeedsLogin,
@@ -91,7 +87,7 @@ private fun Content(
             onBackPressed = exitOnboarding,
             onComplete = {
                 navController.navigate(
-                    if (signInState.isSignedInAsPlusOrPatron) {
+                    if (signInState.isSignedInAsPlus) {
                         OnboardingNavRoute.welcome
                     } else {
                         OnboardingNavRoute.PlusUpgrade.routeWithSource(OnboardingUpgradeSource.RECOMMENDATIONS)
@@ -112,7 +108,7 @@ private fun Content(
                         is OnboardingFlow.PatronAccountUpgrade -> throw IllegalStateException("Account upgrade flow tried to present LoginOrSignupPage")
 
                         OnboardingFlow.PlusAccountUpgradeNeedsLogin,
-                        is OnboardingFlow.Upsell -> {
+                        is OnboardingFlow.PlusUpsell -> {
                             val popped = navController.popBackStack()
                             if (!popped) {
                                 exitOnboarding()
@@ -129,7 +125,7 @@ private fun Content(
                     if (state.isNewAccount) {
                         onAccountCreated()
                     } else {
-                        onLoginToExistingAccount(flow, exitOnboarding, navController)
+                        exitOnboarding()
                     }
                 },
             )
@@ -148,7 +144,20 @@ private fun Content(
                 theme = theme,
                 onBackPressed = { navController.popBackStack() },
                 onLoginComplete = {
-                    onLoginToExistingAccount(flow, exitOnboarding, navController)
+                    when (flow) {
+                        OnboardingFlow.InitialOnboarding,
+                        OnboardingFlow.LoggedOut -> exitOnboarding()
+
+                        is OnboardingFlow.PlusAccountUpgrade,
+                        is OnboardingFlow.PatronAccountUpgrade,
+                        OnboardingFlow.PlusAccountUpgradeNeedsLogin,
+                        is OnboardingFlow.PlusUpsell -> navController.navigate(
+                            OnboardingNavRoute.PlusUpgrade.routeWithSource(OnboardingUpgradeSource.LOGIN)
+                        ) {
+                            // clear backstack after successful login
+                            popUpTo(OnboardingNavRoute.logInOrSignUp) { inclusive = true }
+                        }
+                    }
                 },
                 onForgotPasswordTapped = { navController.navigate(OnboardingNavRoute.forgotPassword) },
             )
@@ -177,7 +186,7 @@ private fun Content(
                 navArgument(OnboardingNavRoute.PlusUpgrade.showPatronOnlyArgumentKey) {
                     type = NavType.BoolType
                     defaultValue = when (flow) {
-                        is OnboardingFlow.Upsell -> flow.showPatronOnly
+                        is OnboardingFlow.PlusUpsell -> flow.showPatronOnly
                         else -> false
                     }
                 }
@@ -196,11 +205,7 @@ private fun Content(
                 OnboardingUpgradeSource.LOGIN,
                 OnboardingUpgradeSource.PLUS_DETAILS,
                 OnboardingUpgradeSource.PROFILE,
-                OnboardingUpgradeSource.ACCOUNT_DETAILS,
-                OnboardingUpgradeSource.SETTINGS,
-                OnboardingUpgradeSource.BOOKMARKS,
-                OnboardingUpgradeSource.HEADPHONE_CONTROLS_SETTINGS,
-                OnboardingUpgradeSource.END_OF_YEAR -> false
+                OnboardingUpgradeSource.ACCOUNT_DETAILS -> false
 
                 OnboardingUpgradeSource.RECOMMENDATIONS -> true
             }
@@ -231,13 +236,13 @@ private fun Content(
             OnboardingWelcomePage(
                 activeTheme = theme,
                 flow = flow,
-                isSignedInAsPlusOrPatron = signInState.isSignedInAsPlusOrPatron,
+                isSignedInAsPlus = signInState.isSignedInAsPlus,
                 onDone = exitOnboarding,
                 onContinueToDiscover = completeOnboardingToDiscover,
                 onImportTapped = { navController.navigate(OnboardingImportFlow.route) },
                 onBackPressed = {
                     // Don't allow navigation back to the upgrade screen after the user upgrades
-                    if (signInState.isSignedInAsPlusOrPatron) {
+                    if (signInState.isSignedInAsPlus) {
                         exitOnboarding()
                     } else {
                         navController.popBackStack()
@@ -248,29 +253,7 @@ private fun Content(
     }
 }
 
-private fun onLoginToExistingAccount(
-    flow: OnboardingFlow,
-    exitOnboarding: () -> Unit,
-    navController: NavHostController
-) {
-    when (flow) {
-        OnboardingFlow.InitialOnboarding,
-        OnboardingFlow.LoggedOut -> exitOnboarding()
-
-        is OnboardingFlow.PlusAccountUpgrade,
-        is OnboardingFlow.PatronAccountUpgrade,
-        OnboardingFlow.PlusAccountUpgradeNeedsLogin,
-        is OnboardingFlow.Upsell -> navController.navigate(
-            OnboardingNavRoute.PlusUpgrade.routeWithSource(OnboardingUpgradeSource.LOGIN)
-        ) {
-            // clear backstack after successful login
-            popUpTo(OnboardingNavRoute.logInOrSignUp) { inclusive = true }
-        }
-    }
-}
-
-@VisibleForTesting
-object OnboardingNavRoute {
+private object OnboardingNavRoute {
 
     const val createFreeAccount = "create_free_account"
     const val forgotPassword = "forgot_password"

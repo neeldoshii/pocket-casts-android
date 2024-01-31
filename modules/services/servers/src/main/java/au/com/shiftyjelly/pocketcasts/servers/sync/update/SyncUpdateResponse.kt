@@ -1,6 +1,5 @@
 package au.com.shiftyjelly.pocketcasts.servers.sync.update
 
-import au.com.shiftyjelly.pocketcasts.models.entity.Bookmark
 import au.com.shiftyjelly.pocketcasts.models.entity.Folder
 import au.com.shiftyjelly.pocketcasts.models.entity.Playlist
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodePlayingStatus
@@ -12,8 +11,7 @@ data class SyncUpdateResponse(
     val playlists: MutableList<Playlist> = mutableListOf(),
     val episodes: MutableList<EpisodeSync> = mutableListOf(),
     val podcasts: MutableList<PodcastSync> = mutableListOf(),
-    val folders: MutableList<Folder> = mutableListOf(),
-    val bookmarks: MutableList<Bookmark> = mutableListOf()
+    val folders: MutableList<Folder> = mutableListOf()
 ) {
 
     data class PodcastSync(

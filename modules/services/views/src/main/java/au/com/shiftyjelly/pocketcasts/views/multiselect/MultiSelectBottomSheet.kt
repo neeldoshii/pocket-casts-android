@@ -8,8 +8,8 @@ import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
+import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
-import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.localization.extensions.getStringPlural
 import au.com.shiftyjelly.pocketcasts.repositories.chromecast.CastManager
 import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
@@ -36,7 +36,7 @@ class MultiSelectBottomSheet : BaseDialogFragment() {
     @Inject lateinit var castManager: CastManager
     @Inject lateinit var analyticsTracker: AnalyticsTrackerWrapper
 
-    var multiSelectHelper: MultiSelectEpisodesHelper? = null
+    var multiSelectHelper: MultiSelectHelper? = null
 
     private val adapter = MultiSelectAdapter(editable = false, listener = this::onClick, dragListener = null)
     private var binding: FragmentMultiselectBottomSheetBinding? = null
@@ -66,7 +66,7 @@ class MultiSelectBottomSheet : BaseDialogFragment() {
         recyclerView.layoutManager = LinearLayoutManager(recyclerView.context, LinearLayoutManager.VERTICAL, false)
         recyclerView.addItemDecoration(DividerItemDecoration(recyclerView.context, LinearLayoutManager.VERTICAL))
 
-        val items = arguments?.getIntArray(ARG_ACTION_IDS)?.map { MultiSelectEpisodeAction.ALL_BY_ID[it] } ?: emptyList()
+        val items = arguments?.getIntArray(ARG_ACTION_IDS)?.map { MultiSelectAction.ALL_BY_ID[it] } ?: emptyList()
         adapter.submitList(items + listOf(MultiSelectAction.SelectAll))
 
         multiSelectHelper?.selectedCount?.observe(viewLifecycleOwner) {
@@ -74,7 +74,7 @@ class MultiSelectBottomSheet : BaseDialogFragment() {
         }
 
         binding.btnEdit.setOnClickListener {
-            val source = (multiSelectHelper?.source ?: SourceView.UNKNOWN)
+            val source = (multiSelectHelper?.source ?: AnalyticsSource.UNKNOWN)
             analyticsTracker.track(
                 AnalyticsEvent.MULTI_SELECT_VIEW_OVERFLOW_MENU_REARRANGE_STARTED,
                 AnalyticsProp.sourceMap(source)
@@ -85,14 +85,14 @@ class MultiSelectBottomSheet : BaseDialogFragment() {
     }
 
     private fun onClick(item: MultiSelectAction) {
-        multiSelectHelper?.onMenuItemSelected(item.actionId, resources, parentFragmentManager)
+        multiSelectHelper?.onMenuItemSelected(item.actionId, resources, childFragmentManager)
         dismiss()
     }
 
     private object AnalyticsProp {
         private const val source = "source"
 
-        fun sourceMap(eventSource: SourceView) =
+        fun sourceMap(eventSource: AnalyticsSource) =
             mapOf(source to eventSource.analyticsValue)
     }
 }

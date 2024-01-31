@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import au.com.shiftyjelly.pocketcasts.compose.AppThemeWithBackground
 import au.com.shiftyjelly.pocketcasts.compose.buttons.RowButton
 import au.com.shiftyjelly.pocketcasts.compose.buttons.RowOutlinedButton
+import au.com.shiftyjelly.pocketcasts.compose.components.TextH20
 import au.com.shiftyjelly.pocketcasts.compose.components.TextH50
 import au.com.shiftyjelly.pocketcasts.compose.preview.ThemePreviewParameterProvider
 import au.com.shiftyjelly.pocketcasts.compose.theme
@@ -48,6 +49,7 @@ class BottomSheetContentState(
     val content: Content,
 ) {
     data class Content(
+        val titleText: String,
         val imageContent: @Composable (() -> Unit)? = null,
         val summaryText: String,
         val primaryButton: Button.Primary,
@@ -92,6 +94,10 @@ fun BottomSheetContent(
 
             Pill()
 
+            Spacer(modifier = modifier.height(32.dp))
+
+            TitleText(content)
+
             Spacer(modifier = modifier.height(16.dp))
 
             state.content.imageContent?.let { imageContent ->
@@ -126,6 +132,14 @@ fun Pill(
             .clip(RoundedCornerShape(PillCornerRadius))
             .alpha(PillAlpha)
             .background(MaterialTheme.theme.colors.primaryText02)
+    )
+}
+
+@Composable
+private fun TitleText(content: BottomSheetContentState.Content) {
+    TextH20(
+        text = content.titleText,
+        color = MaterialTheme.theme.colors.primaryText01,
     )
 }
 
@@ -186,6 +200,7 @@ private fun BottomSheetContentPreview(
         BottomSheetContent(
             state = BottomSheetContentState(
                 content = BottomSheetContentState.Content(
+                    titleText = "Heading",
                     summaryText = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.",
                     primaryButton = BottomSheetContentState.Content.Button.Primary(
                         label = "Confirm",

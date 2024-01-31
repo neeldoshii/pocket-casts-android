@@ -21,7 +21,6 @@ import au.com.shiftyjelly.pocketcasts.player.viewmodel.NotesViewModel
 import au.com.shiftyjelly.pocketcasts.player.viewmodel.PlayerViewModel
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
-import au.com.shiftyjelly.pocketcasts.servers.shownotes.ShowNotesState
 import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
 import au.com.shiftyjelly.pocketcasts.utils.extensions.toSecondsFromColonFormattedString
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
@@ -79,14 +78,13 @@ class NotesFragment : BaseFragment() {
 
         setupShowNotes()
 
-        viewModel.showNotes.observe(viewLifecycleOwner) { state ->
+        viewModel.showNotes.observe(viewLifecycleOwner) { (notes, inProgress) ->
             if (webView == null) {
                 // If the webview has crashed we need to reinitialise it or
                 // else it won't show any notes until the app is restarted
                 setupShowNotes()
             }
-            binding?.progressBar?.showIf(state is ShowNotesState.Loading)
-            val notes = if (state is ShowNotesState.Loaded) state.showNotes else ""
+            binding?.progressBar?.showIf(inProgress)
             loadShowNotes(notes)
         }
 
@@ -151,7 +149,7 @@ class NotesFragment : BaseFragment() {
     private fun jumpToTime(timeStr: String) {
         val timeInSeconds = timeStr.toSecondsFromColonFormattedString() ?: return
 
-        Toast.makeText(context, getString(LR.string.skipping_to, timeStr), Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Skipping to $timeStr", Toast.LENGTH_SHORT).show()
         playbackManager.seekToTimeMs((timeInSeconds * 1000))
     }
 

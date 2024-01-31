@@ -35,12 +35,11 @@ import au.com.shiftyjelly.pocketcasts.compose.components.HorizontalDivider
 import au.com.shiftyjelly.pocketcasts.compose.theme
 import au.com.shiftyjelly.pocketcasts.extensions.openUrl
 import au.com.shiftyjelly.pocketcasts.localization.BuildConfig
+import au.com.shiftyjelly.pocketcasts.localization.R
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
-import au.com.shiftyjelly.pocketcasts.settings.LogsFragment
 import au.com.shiftyjelly.pocketcasts.ui.extensions.getThemeDrawable
 import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
 import dagger.hilt.android.AndroidEntryPoint
-import au.com.shiftyjelly.pocketcasts.localization.R as LR
 import au.com.shiftyjelly.pocketcasts.ui.R as UR
 
 @AndroidEntryPoint
@@ -52,7 +51,6 @@ class AutomotiveAboutFragment : Fragment() {
                 AutomotiveTheme {
                     AboutPage(
                         onOpenLicenses = { openLicenses() },
-                        onOpenLogs = { onOpenLogs() },
                         onOpenUrl = { openUrl(it) }
                     )
                 }
@@ -63,18 +61,10 @@ class AutomotiveAboutFragment : Fragment() {
     private fun openLicenses() {
         (activity as? FragmentHostListener)?.addFragment(AutomotiveLicensesFragment())
     }
-
-    private fun onOpenLogs() {
-        (activity as? FragmentHostListener)?.addFragment(LogsFragment())
-    }
 }
 
 @Composable
-private fun AboutPage(
-    onOpenLicenses: () -> Unit,
-    onOpenLogs: () -> Unit,
-    onOpenUrl: (String) -> Unit
-) {
+private fun AboutPage(onOpenLicenses: () -> Unit, onOpenUrl: (String) -> Unit) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     Column(
@@ -83,13 +73,13 @@ private fun AboutPage(
     ) {
         Image(
             painter = painterResource(context.getThemeDrawable(UR.attr.logo_title_vertical)),
-            contentDescription = stringResource(LR.string.settings_app_icon),
+            contentDescription = stringResource(R.string.settings_app_icon),
             modifier = Modifier
                 .padding(top = 56.dp)
                 .size(width = 220.dp, height = 132.dp)
         )
         Text(
-            text = stringResource(LR.string.settings_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toString()),
+            text = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toString()),
             fontSize = 24.sp,
             modifier = Modifier.padding(top = 16.dp),
             color = MaterialTheme.theme.colors.primaryText02
@@ -97,44 +87,28 @@ private fun AboutPage(
         HorizontalDivider(
             modifier = Modifier.padding(top = 56.dp, bottom = 16.dp)
         )
-        SubTitle(stringResource(LR.string.settings_about_legal))
+        Text(
+            text = stringResource(R.string.settings_about_legal),
+            fontSize = 24.sp,
+            fontWeight = FontWeight(500),
+            letterSpacing = 0.25.sp,
+            color = MaterialTheme.theme.colors.primaryInteractive01,
+            modifier = Modifier.align(Alignment.Start).padding(horizontal = 48.dp, vertical = 16.dp)
+        )
         TextLinkButton(
-            text = stringResource(LR.string.settings_about_terms_of_serivce),
+            text = stringResource(R.string.settings_about_terms_of_serivce),
             onClick = { onOpenUrl(Settings.INFO_TOS_URL) }
         )
         TextLinkButton(
-            text = stringResource(LR.string.settings_about_privacy_policy),
+            text = stringResource(R.string.settings_about_privacy_policy),
             onClick = { onOpenUrl(Settings.INFO_PRIVACY_URL) }
         )
         TextLinkButton(
-            text = stringResource(LR.string.settings_about_acknowledgements),
+            text = stringResource(R.string.settings_about_acknowledgements),
             onClick = { onOpenLicenses() }
-        )
-        SubTitle(stringResource(LR.string.support))
-        TextLinkButton(
-            text = stringResource(LR.string.settings_title_help),
-            onClick = { onOpenUrl(Settings.INFO_FAQ_URL) }
-        )
-        TextLinkButton(
-            text = stringResource(LR.string.settings_logs),
-            onClick = { onOpenLogs() }
         )
         Spacer(Modifier.height(15.dp))
     }
-}
-
-@Composable
-private fun SubTitle(title: String, modifier: Modifier = Modifier) {
-    Text(
-        text = title,
-        fontSize = 24.sp,
-        fontWeight = FontWeight(500),
-        letterSpacing = 0.25.sp,
-        color = MaterialTheme.theme.colors.primaryInteractive01,
-        modifier = modifier
-            .padding(horizontal = 48.dp, vertical = 16.dp)
-            .fillMaxWidth()
-    )
 }
 
 @Composable
@@ -157,5 +131,5 @@ private fun TextLinkButton(text: String, onClick: () -> Unit, modifier: Modifier
 @Composable
 @Preview
 private fun AboutPageRow() {
-    AboutPage(onOpenLicenses = {}, onOpenLogs = {}, onOpenUrl = {})
+    AboutPage(onOpenLicenses = {}, onOpenUrl = {})
 }

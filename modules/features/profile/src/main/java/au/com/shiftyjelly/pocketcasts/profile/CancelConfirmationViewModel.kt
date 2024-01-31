@@ -16,12 +16,12 @@ class CancelConfirmationViewModel
     private val analyticsTracker: AnalyticsTrackerWrapper,
 ) : ViewModel() {
     var expirationDate: String? = null
-    private val paidSubscription: SubscriptionStatus.Paid?
-        get() = settings.cachedSubscriptionStatus.value as? SubscriptionStatus.Paid
+    private val plusSubscription: SubscriptionStatus.Plus?
+        get() = settings.getCachedSubscription() as? SubscriptionStatus.Plus
 
     init {
         onViewShown()
-        expirationDate = paidSubscription?.expiryDate?.toLocalizedFormatLongStyle()
+        expirationDate = plusSubscription?.expiryDate?.toLocalizedFormatLongStyle()
     }
 
     private fun onViewShown() {

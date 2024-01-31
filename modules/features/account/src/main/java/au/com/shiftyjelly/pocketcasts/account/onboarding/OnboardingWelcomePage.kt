@@ -36,19 +36,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import au.com.shiftyjelly.pocketcasts.account.R
 import au.com.shiftyjelly.pocketcasts.account.onboarding.upgrade.OnboardingUpgradeHelper
 import au.com.shiftyjelly.pocketcasts.account.viewmodel.OnboardingWelcomeState
 import au.com.shiftyjelly.pocketcasts.account.viewmodel.OnboardingWelcomeViewModel
 import au.com.shiftyjelly.pocketcasts.compose.AppThemeWithBackground
 import au.com.shiftyjelly.pocketcasts.compose.CallOnce
 import au.com.shiftyjelly.pocketcasts.compose.buttons.RowButton
-import au.com.shiftyjelly.pocketcasts.compose.components.Confetti
 import au.com.shiftyjelly.pocketcasts.compose.components.TextH10
 import au.com.shiftyjelly.pocketcasts.compose.components.TextH40
 import au.com.shiftyjelly.pocketcasts.compose.components.TextP60
@@ -58,6 +59,10 @@ import au.com.shiftyjelly.pocketcasts.compose.theme
 import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingFlow
 import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingUpgradeSource
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import au.com.shiftyjelly.pocketcasts.images.R as IR
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
@@ -66,7 +71,7 @@ import au.com.shiftyjelly.pocketcasts.localization.R as LR
 fun OnboardingWelcomePage(
     activeTheme: Theme.ThemeType,
     flow: OnboardingFlow,
-    isSignedInAsPlusOrPatron: Boolean,
+    isSignedInAsPlus: Boolean,
     onDone: () -> Unit,
     onContinueToDiscover: () -> Unit,
     onImportTapped: () -> Unit,
@@ -99,7 +104,7 @@ fun OnboardingWelcomePage(
     val showDiscover = (flow as? OnboardingFlow.PlusFlow)?.source != OnboardingUpgradeSource.FILES
 
     Content(
-        isSignedInAsPlusOrPatron = isSignedInAsPlusOrPatron,
+        isSignedInAsPlus = isSignedInAsPlus,
         showDiscover = showDiscover,
         onContinueToDiscover = {
             viewModel.onContinueToDiscover(flow)
@@ -126,7 +131,7 @@ fun OnboardingWelcomePage(
 
 @Composable
 private fun Content(
-    isSignedInAsPlusOrPatron: Boolean,
+    isSignedInAsPlus: Boolean,
     showDiscover: Boolean,
     onContinueToDiscover: () -> Unit,
     onImportTapped: () -> Unit,
@@ -143,7 +148,7 @@ private fun Content(
         Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
         Spacer(Modifier.weight(1f))
 
-        if (isSignedInAsPlusOrPatron) {
+        if (isSignedInAsPlus) {
             PlusPersonCheckmark()
         } else {
             PersonCheckmark()
@@ -152,7 +157,7 @@ private fun Content(
         Spacer(Modifier.height(8.dp))
         TextH10(
             text = stringResource(
-                if (isSignedInAsPlusOrPatron) {
+                if (isSignedInAsPlus) {
                     LR.string.onboarding_welcome_get_you_listening_plus
                 } else {
                     LR.string.onboarding_welcome_get_you_listening
@@ -203,6 +208,20 @@ private fun Content(
                 .height(16.dp)
         )
     }
+}
+
+@Composable
+private fun Confetti(
+    onConfettiShown: () -> Unit,
+) {
+    val lottieComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.confetti))
+    val progress by animateLottieCompositionAsState(lottieComposition)
+
+    LottieAnimation(
+        composition = lottieComposition,
+        contentScale = ContentScale.Crop,
+    )
+    if (progress == 1.0f) onConfettiShown()
 }
 
 @Composable
@@ -341,7 +360,7 @@ private fun PersonCheckmark(
 private fun OnboardingWelcomePagePreview(@PreviewParameter(ThemePreviewParameterProvider::class) themeType: Theme.ThemeType) {
     AppThemeWithBackground(themeType) {
         Content(
-            isSignedInAsPlusOrPatron = false,
+            isSignedInAsPlus = false,
             showDiscover = true,
             onContinueToDiscover = {},
             onImportTapped = {},
@@ -357,7 +376,7 @@ private fun OnboardingWelcomePagePreview(@PreviewParameter(ThemePreviewParameter
 private fun OnboardingWelcomePagePlusPreview(@PreviewParameter(ThemePreviewParameterProvider::class) themeType: Theme.ThemeType) {
     AppThemeWithBackground(themeType) {
         Content(
-            isSignedInAsPlusOrPatron = true,
+            isSignedInAsPlus = true,
             showDiscover = true,
             onContinueToDiscover = {},
             onImportTapped = {},

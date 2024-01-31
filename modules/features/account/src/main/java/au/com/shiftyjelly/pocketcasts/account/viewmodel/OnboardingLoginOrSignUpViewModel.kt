@@ -14,8 +14,7 @@ import au.com.shiftyjelly.pocketcasts.utils.extensions.isGooglePlayServicesAvail
 import com.google.android.gms.common.GoogleApiAvailability
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -32,19 +31,12 @@ class OnboardingLoginOrSignUpViewModel @Inject constructor(
         Settings.GOOGLE_SIGN_IN_SERVER_CLIENT_ID.isNotEmpty() &&
             GoogleApiAvailability.getInstance().isGooglePlayServicesAvailableSuccess(context)
 
-    private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
-    val uiState: StateFlow<UiState> = _uiState
-
-    sealed class UiState {
-        object Loading : UiState()
-        data class Loaded(val randomPodcasts: List<Podcast>) : UiState()
-    }
+    val randomPodcasts = mutableListOf<Podcast>()
 
     init {
-        viewModelScope.launch {
-            _uiState.value = UiState.Loading
-            val randomPodcasts = podcastManager.findRandomPodcasts(limit = 6)
-            _uiState.value = UiState.Loaded(randomPodcasts = randomPodcasts)
+        viewModelScope.launch(Dispatchers.IO) {
+            randomPodcasts.clear()
+            randomPodcasts.addAll(podcastManager.findRandomPodcasts(limit = 6))
         }
     }
 

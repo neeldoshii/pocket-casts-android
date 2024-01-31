@@ -17,8 +17,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.Icon
-import androidx.wear.compose.material.MaterialTheme
 import au.com.shiftyjelly.pocketcasts.compose.components.TextH30
+import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.wear.theme.WearAppTheme
 import au.com.shiftyjelly.pocketcasts.wear.theme.WearColors
 import kotlinx.coroutines.delay
@@ -34,7 +34,7 @@ fun NotificationScreen(
     icon: @Composable () -> Unit = {
         Icon(
             painter = painterResource(IR.drawable.ic_check_black_24dp),
-            tint = WearColors.success,
+            tint = WearColors.FFA1E7B0,
             contentDescription = null,
             modifier = Modifier.size(52.dp)
         )
@@ -61,7 +61,6 @@ fun NotificationScreen(
         TextH30(
             text = text,
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colors.onPrimary,
         )
     }
 }
@@ -69,7 +68,7 @@ fun NotificationScreen(
 @Preview
 @Composable
 private fun NotificationScreenPreview() {
-    WearAppTheme {
+    WearAppTheme(Theme.ThemeType.DARK) {
         NotificationScreen(
             text = "Done",
             onClose = {}

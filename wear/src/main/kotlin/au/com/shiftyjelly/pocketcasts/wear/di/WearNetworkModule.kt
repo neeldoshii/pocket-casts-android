@@ -2,7 +2,6 @@ package au.com.shiftyjelly.pocketcasts.wear.di
 
 import android.content.Context
 import android.net.ConnectivityManager
-import au.com.shiftyjelly.pocketcasts.repositories.di.ApplicationScope
 import au.com.shiftyjelly.pocketcasts.repositories.di.DownloadCallFactory
 import au.com.shiftyjelly.pocketcasts.repositories.di.DownloadOkHttpClient
 import au.com.shiftyjelly.pocketcasts.repositories.di.DownloadRequestBuilder
@@ -38,7 +37,7 @@ object WearNetworkModule {
     @Provides
     fun networkRepository(
         @ApplicationContext application: Context,
-        @ApplicationScope coroutineScope: CoroutineScope
+        @ForApplicationScope coroutineScope: CoroutineScope
     ): NetworkRepository = NetworkRepositoryImpl.fromContext(
         application,
         coroutineScope
@@ -64,7 +63,7 @@ object WearNetworkModule {
     @Singleton
     fun provideHighBandwidthNetworkMediator(
         connectivityManager: ConnectivityManager,
-        @ApplicationScope coroutineScope: CoroutineScope,
+        @ForApplicationScope coroutineScope: CoroutineScope,
     ): HighBandwidthNetworkMediator =
         StandardHighBandwidthNetworkMediator(
             logger = NetworkStatusLogger.Logging,
@@ -84,7 +83,7 @@ object WearNetworkModule {
         networkRepository: NetworkRepository,
         networkingRulesEngine: NetworkingRulesEngine,
         @DownloadOkHttpClient phoneCallFactory: OkHttpClient,
-        @ApplicationScope coroutineScope: CoroutineScope,
+        @ForApplicationScope coroutineScope: CoroutineScope,
         logger: NetworkStatusLogger
     ): Call.Factory {
 

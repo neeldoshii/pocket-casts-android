@@ -20,7 +20,7 @@ class RatingsManagerImpl @Inject constructor(
 
     override fun podcastRatings(podcastUuid: String) =
         podcastRatingsDao.podcastRatings(podcastUuid)
-            .map { it.firstOrNull() ?: noRatings(podcastUuid) }
+            .map { it.firstOrNull() ?: PodcastRatings(podcastUuid, 0.0) }
 
     override suspend fun refreshPodcastRatings(podcastUuid: String) {
         val ratings = cacheServerManager.getPodcastRatings(podcastUuid)
@@ -30,14 +30,6 @@ class RatingsManagerImpl @Inject constructor(
                 total = ratings.total,
                 average = ratings.average
             )
-        )
-    }
-
-    companion object {
-        private fun noRatings(podcastUuid: String) = PodcastRatings(
-            podcastUuid = podcastUuid,
-            average = 0.0,
-            total = 0
         )
     }
 }

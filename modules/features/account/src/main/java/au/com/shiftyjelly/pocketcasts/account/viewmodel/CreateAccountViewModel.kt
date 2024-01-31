@@ -6,9 +6,6 @@ import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
 import au.com.shiftyjelly.pocketcasts.analytics.TracksAnalyticsTracker
 import au.com.shiftyjelly.pocketcasts.models.type.Subscription
-import au.com.shiftyjelly.pocketcasts.models.type.Subscription.Companion.PLUS_MONTHLY_PRODUCT_ID
-import au.com.shiftyjelly.pocketcasts.models.type.Subscription.Companion.PLUS_YEARLY_PRODUCT_ID
-import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionMapper
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.PodcastManager
 import au.com.shiftyjelly.pocketcasts.repositories.subscription.ProductDetailsState
@@ -42,6 +39,7 @@ class CreateAccountViewModel
     val createAccountState = MutableLiveData<CreateAccountState>().apply { value = CreateAccountState.CurrentlyValid }
     private val disposables = CompositeDisposable()
     var defaultSubscriptionType = SubscriptionType.FREE
+    var supporterInstance = false
 
     @Inject lateinit var subscriptionManager: SubscriptionManager
 
@@ -53,19 +51,13 @@ class CreateAccountViewModel
         private const val ENABLED_KEY = "enabled"
 
         fun trackPurchaseEvent(subscription: Subscription?, purchaseEvent: PurchaseEvent, analyticsTracker: AnalyticsTrackerWrapper) {
-            val productKey = subscription?.productDetails?.productId?.let {
-                if (it in listOf(PLUS_MONTHLY_PRODUCT_ID, PLUS_YEARLY_PRODUCT_ID)) {
-                    // retain short product id for plus subscriptions
-                    // extract part of the product id after the last period ("com.pocketcasts.plus.monthly" -> "monthly")
-                    it.split('.').lastOrNull()
-                } else {
-                    it // return full product id for new products
-                }
-            } ?: TracksAnalyticsTracker.INVALID_OR_NULL_VALUE
+            // extract part of the product id after the last period ("com.pocketcasts.plus.monthly" -> "monthly")
+            val shortProductId = subscription?.productDetails?.productId?.split('.')?.lastOrNull()
+                ?: TracksAnalyticsTracker.INVALID_OR_NULL_VALUE
             val isFreeTrial = subscription is Subscription.WithTrial
 
             val analyticsProperties = mapOf(
-                PRODUCT_KEY to productKey,
+                PRODUCT_KEY to shortProductId,
                 IS_FREE_TRIAL_KEY to isFreeTrial
             )
 
@@ -101,7 +93,7 @@ class CreateAccountViewModel
                             .mapNotNull {
                                 Subscription.fromProductDetails(
                                     productDetails = it,
-                                    isFreeTrialEligible = subscriptionManager.isFreeTrialEligible(SubscriptionMapper.mapProductIdToTier(it.productId))
+                                    isFreeTrialEligible = subscriptionManager.isFreeTrialEligible()
                                 )
                             }
                         subscriptionManager.getDefaultSubscription(subscriptions)?.let { updateSubscription(it) }
@@ -178,7 +170,8 @@ class CreateAccountViewModel
         )
         newsletter.value = isChecked
         newsletter.value?.let {
-            settings.marketingOptIn.set(it, needsSync = true)
+            settings.setMarketingOptIn(it)
+            settings.setMarketingOptInNeedsSync(true)
         }
     }
 

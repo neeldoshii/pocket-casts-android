@@ -1,21 +1,16 @@
 package au.com.shiftyjelly.pocketcasts.settings.viewmodel
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
-import au.com.shiftyjelly.pocketcasts.preferences.model.AutoArchiveAfterPlayingSetting
-import au.com.shiftyjelly.pocketcasts.preferences.model.AutoArchiveInactiveSetting
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
 @HiltViewModel
 class AutoArchiveFragmentViewModel @Inject constructor(
     private val settings: Settings,
     private val analyticsTracker: AnalyticsTrackerWrapper,
-    @ApplicationContext private val context: Context,
 ) : ViewModel() {
     private var isFragmentChangingConfigurations: Boolean = false
 
@@ -25,29 +20,42 @@ class AutoArchiveFragmentViewModel @Inject constructor(
         }
     }
 
-    fun onStarredChanged(newValue: Boolean) {
-        settings.autoArchiveIncludeStarred.set(newValue)
+    fun onStarredChanged() {
         analyticsTracker.track(
             AnalyticsEvent.SETTINGS_AUTO_ARCHIVE_INCLUDE_STARRED_TOGGLED,
-            mapOf("enabled" to newValue)
+            mapOf("enabled" to settings.getAutoArchiveIncludeStarred())
         )
     }
 
-    fun onPlayedEpisodesAfterChanged(newStringValue: String) {
-        val newValue = AutoArchiveAfterPlayingSetting.fromString(newStringValue, context)
-        settings.autoArchiveAfterPlaying.set(newValue)
+    fun onPlayedEpisodesAfterChanged() {
         analyticsTracker.track(
             AnalyticsEvent.SETTINGS_AUTO_ARCHIVE_PLAYED_CHANGED,
-            mapOf("value" to newValue.analyticsValue)
+            mapOf(
+                "value" to when (settings.getAutoArchiveAfterPlaying()) {
+                    Settings.AutoArchiveAfterPlaying.Never -> "never"
+                    Settings.AutoArchiveAfterPlaying.AfterPlaying -> "after_playing"
+                    Settings.AutoArchiveAfterPlaying.Hours24 -> "after_24_hours"
+                    Settings.AutoArchiveAfterPlaying.Days2 -> "after_2_days"
+                    Settings.AutoArchiveAfterPlaying.Weeks1 -> "after_1_week"
+                }
+            )
         )
     }
 
-    fun onInactiveChanged(newStringValue: String) {
-        val newValue = AutoArchiveInactiveSetting.fromString(newStringValue, context)
-        settings.autoArchiveInactive.set(newValue)
+    fun onInactiveChanged() {
         analyticsTracker.track(
             AnalyticsEvent.SETTINGS_AUTO_ARCHIVE_INACTIVE_CHANGED,
-            mapOf("value" to newValue.analyticsValue)
+            mapOf(
+                "value" to when (settings.getAutoArchiveInactive()) {
+                    Settings.AutoArchiveInactive.Never -> "never"
+                    Settings.AutoArchiveInactive.Hours24 -> "after_24_hours"
+                    Settings.AutoArchiveInactive.Days2 -> "after_2_days"
+                    Settings.AutoArchiveInactive.Weeks1 -> "after_1_week"
+                    Settings.AutoArchiveInactive.Weeks2 -> "after_2_weeks"
+                    Settings.AutoArchiveInactive.Days30 -> "after_30_days"
+                    Settings.AutoArchiveInactive.Days90 -> "after 3 months"
+                }
+            )
         )
     }
 

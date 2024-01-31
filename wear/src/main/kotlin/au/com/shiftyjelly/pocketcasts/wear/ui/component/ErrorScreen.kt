@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.wear.theme.WearAppTheme
 
 @Composable
@@ -61,7 +62,7 @@ fun ErrorScreen(
 @Preview
 @Composable
 private fun NotificationScreenPreview() {
-    WearAppTheme {
+    WearAppTheme(Theme.ThemeType.DARK) {
         ErrorScreen("There was a problem")
     }
 }

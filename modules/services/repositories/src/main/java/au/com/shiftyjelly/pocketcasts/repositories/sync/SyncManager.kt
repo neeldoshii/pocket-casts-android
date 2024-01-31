@@ -2,7 +2,6 @@ package au.com.shiftyjelly.pocketcasts.repositories.sync
 
 import android.accounts.Account
 import au.com.shiftyjelly.pocketcasts.analytics.AccountStatusInfo
-import au.com.shiftyjelly.pocketcasts.models.entity.Bookmark
 import au.com.shiftyjelly.pocketcasts.models.entity.Playlist
 import au.com.shiftyjelly.pocketcasts.models.entity.UserEpisode
 import au.com.shiftyjelly.pocketcasts.models.to.HistorySyncRequest
@@ -49,9 +48,9 @@ interface SyncManager : NamedSettingsCaller, AccountStatusInfo {
     suspend fun loginWithToken(token: RefreshToken, loginIdentity: LoginIdentity, signInSource: SignInSource): LoginResult
     suspend fun createUserWithEmailAndPassword(email: String, password: String): LoginResult
     suspend fun forgotPassword(email: String, onSuccess: () -> Unit, onError: (String) -> Unit)
-    suspend fun getAccessToken(account: Account): AccessToken
+    suspend fun getAccessToken(account: Account): AccessToken?
     fun getRefreshToken(): RefreshToken?
-    suspend fun emailChange(newEmail: String, password: String): UserChangeResponse
+    fun emailChange(newEmail: String, password: String): Single<UserChangeResponse>
     fun deleteAccount(): Single<UserChangeResponse>
     suspend fun updatePassword(newPassword: String, oldPassword: String)
 
@@ -89,5 +88,4 @@ interface SyncManager : NamedSettingsCaller, AccountStatusInfo {
     fun getFilters(): Single<List<Playlist>>
     suspend fun loadStats(): StatsBundle
     fun upNextSync(request: UpNextSyncRequest): Single<UpNextSyncResponse>
-    suspend fun getBookmarks(): List<Bookmark>
 }

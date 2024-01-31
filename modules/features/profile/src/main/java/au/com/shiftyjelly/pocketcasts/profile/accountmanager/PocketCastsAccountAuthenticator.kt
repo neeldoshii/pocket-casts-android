@@ -4,7 +4,6 @@ import android.accounts.AbstractAccountAuthenticator
 import android.accounts.Account
 import android.accounts.AccountAuthenticatorResponse
 import android.accounts.AccountManager
-import android.accounts.NetworkErrorException
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -12,7 +11,6 @@ import androidx.core.os.bundleOf
 import au.com.shiftyjelly.pocketcasts.account.AccountActivity
 import au.com.shiftyjelly.pocketcasts.preferences.AccountConstants
 import au.com.shiftyjelly.pocketcasts.repositories.sync.SyncManager
-import au.com.shiftyjelly.pocketcasts.servers.sync.exception.RefreshTokenExpiredException
 import kotlinx.coroutines.runBlocking
 
 class PocketCastsAccountAuthenticator(
@@ -36,21 +34,16 @@ class PocketCastsAccountAuthenticator(
             return buildSignInIntent(response)
         }
 
-        return try {
-            val accessToken = runBlocking { syncManager.getAccessToken(account) }
+        val accessToken = runBlocking { syncManager.getAccessToken(account) }
 
+        return if (accessToken == null) {
+            buildSignInIntent(response)
+        } else {
             bundleOf(
                 AccountManager.KEY_ACCOUNT_NAME to account.name,
                 AccountManager.KEY_ACCOUNT_TYPE to account.type,
                 AccountManager.KEY_AUTHTOKEN to accessToken.value
             )
-        } catch (e: Exception) {
-            // the refresh token is invalid or expired so the user needs to sign in again
-            if (e is RefreshTokenExpiredException) {
-                return buildSignInIntent(response)
-            } else {
-                throw NetworkErrorException(e)
-            }
         }
     }
 

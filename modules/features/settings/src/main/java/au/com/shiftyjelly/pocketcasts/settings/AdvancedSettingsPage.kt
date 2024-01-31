@@ -1,6 +1,5 @@
 package au.com.shiftyjelly.pocketcasts.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
@@ -69,7 +68,6 @@ fun AdvancedSettingsView(
 
         Column(
             modifier
-                .background(MaterialTheme.theme.colors.primaryUi02)
                 .fillMaxHeight()
                 .verticalScroll(rememberScrollState())
         ) {

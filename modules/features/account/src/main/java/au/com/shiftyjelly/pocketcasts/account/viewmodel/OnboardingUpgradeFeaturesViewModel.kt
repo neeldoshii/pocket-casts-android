@@ -20,13 +20,12 @@ import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionFrequency
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionMapper
 import au.com.shiftyjelly.pocketcasts.models.type.SubscriptionPricingPhase
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.repositories.BuildConfig
 import au.com.shiftyjelly.pocketcasts.repositories.subscription.ProductDetailsState
 import au.com.shiftyjelly.pocketcasts.repositories.subscription.PurchaseEvent
 import au.com.shiftyjelly.pocketcasts.repositories.subscription.SubscriptionManager
 import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingFlow
 import au.com.shiftyjelly.pocketcasts.settings.onboarding.OnboardingUpgradeSource
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,7 +53,7 @@ class OnboardingUpgradeFeaturesViewModel @Inject constructor(
     private val showPatronOnly = savedStateHandle.get<Boolean>("show_patron_only")
 
     init {
-        if (FeatureFlag.isEnabled(Feature.ADD_PATRON_ENABLED)) {
+        if (BuildConfig.ADD_PATRON_ENABLED) {
             viewModelScope.launch {
                 subscriptionManager
                     .observeProductDetails()
@@ -66,9 +65,7 @@ class OnboardingUpgradeFeaturesViewModel @Inject constructor(
                             is ProductDetailsState.Loaded -> productDetails.productDetails.mapNotNull { productDetailsState ->
                                 Subscription.fromProductDetails(
                                     productDetails = productDetailsState,
-                                    isFreeTrialEligible = subscriptionManager.isFreeTrialEligible(
-                                        SubscriptionMapper.mapProductIdToTier(productDetailsState.productId)
-                                    )
+                                    isFreeTrialEligible = subscriptionManager.isFreeTrialEligible()
                                 )
                             }
                         } ?: emptyList()
@@ -201,6 +198,7 @@ class OnboardingUpgradeFeaturesViewModel @Inject constructor(
                 )
 
             currentSubscription?.let { subscription ->
+                // TODO: Patron - Fix tracking
                 analyticsTracker.track(
                     AnalyticsEvent.SELECT_PAYMENT_FREQUENCY_NEXT_BUTTON_TAPPED,
                     mapOf(OnboardingUpgradeBottomSheetViewModel.flowKey to flow.analyticsValue, OnboardingUpgradeBottomSheetViewModel.selectedSubscriptionKey to subscription.productDetails.productId)

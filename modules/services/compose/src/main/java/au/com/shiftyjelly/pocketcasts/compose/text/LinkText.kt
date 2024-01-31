@@ -6,17 +6,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import au.com.shiftyjelly.pocketcasts.compose.AppThemeWithBackground
+import au.com.shiftyjelly.pocketcasts.compose.AppTheme
 import au.com.shiftyjelly.pocketcasts.compose.components.TextH40
 import au.com.shiftyjelly.pocketcasts.compose.theme
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
-import com.airbnb.android.showkase.annotation.ShowkaseComposable
 
 @Composable
 fun LinkText(
     text: String,
-    modifier: Modifier = Modifier,
     textAlign: TextAlign? = null,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     TextH40(
@@ -27,20 +26,24 @@ fun LinkText(
     )
 }
 
-@ShowkaseComposable(name = "LinkText", group = "Button", styleName = "Light", defaultStyle = true)
-@Preview(name = "Light")
+@Preview(showBackground = true)
 @Composable
 fun LinkTextLightPreview() {
-    AppThemeWithBackground(Theme.ThemeType.LIGHT) {
-        LinkText(text = "Hello World", onClick = {})
+    AppTheme(Theme.ThemeType.LIGHT) {
+        LinkText(
+            text = "Hello World",
+            onClick = {}
+        )
     }
 }
 
-@ShowkaseComposable(name = "LinkText", group = "Button", styleName = "Dark")
-@Preview(name = "Dark")
+@Preview(showBackground = true, backgroundColor = 0xFF000000)
 @Composable
 fun LinkTextDarkPreview() {
-    AppThemeWithBackground(Theme.ThemeType.DARK) {
-        LinkText(text = "Hello World", onClick = {})
+    AppTheme(Theme.ThemeType.DARK) {
+        LinkText(
+            text = "Hello World",
+            onClick = {}
+        )
     }
 }

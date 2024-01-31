@@ -7,5 +7,4 @@ import com.squareup.moshi.JsonClass
 data class LoginPocketCastsRequest(
     @field:Json(name = "email") val email: String,
     @field:Json(name = "password") val password: String,
-    @field:Json(name = "scope") val scope: String,
 )

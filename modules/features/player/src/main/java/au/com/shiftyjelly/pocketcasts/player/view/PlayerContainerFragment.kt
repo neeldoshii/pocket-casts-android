@@ -13,7 +13,6 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.activityViewModels
-import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE
 import androidx.viewpager2.adapter.FragmentStateAdapter
@@ -21,14 +20,9 @@ import androidx.viewpager2.widget.ViewPager2
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
 import au.com.shiftyjelly.pocketcasts.analytics.FirebaseAnalyticsTracker
-import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.models.to.Chapter
 import au.com.shiftyjelly.pocketcasts.player.R
 import au.com.shiftyjelly.pocketcasts.player.databinding.FragmentPlayerContainerBinding
-import au.com.shiftyjelly.pocketcasts.player.view.bookmark.BookmarksFragment
-import au.com.shiftyjelly.pocketcasts.player.view.chapters.ChaptersFragment
-import au.com.shiftyjelly.pocketcasts.player.view.chapters.ChaptersViewModel
-import au.com.shiftyjelly.pocketcasts.player.viewmodel.BookmarksViewModel
 import au.com.shiftyjelly.pocketcasts.player.viewmodel.PlayerViewModel
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.repositories.playback.UpNextSource
@@ -36,8 +30,6 @@ import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
 import au.com.shiftyjelly.pocketcasts.ui.helper.StatusBarColor
 import au.com.shiftyjelly.pocketcasts.ui.theme.Theme
 import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
 import au.com.shiftyjelly.pocketcasts.views.helper.HasBackstack
 import au.com.shiftyjelly.pocketcasts.views.tour.TourStep
@@ -47,7 +39,6 @@ import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
 import javax.inject.Inject
-import au.com.shiftyjelly.pocketcasts.images.R as IR
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
 import au.com.shiftyjelly.pocketcasts.views.R as VR
 
@@ -55,13 +46,11 @@ import au.com.shiftyjelly.pocketcasts.views.R as VR
 class PlayerContainerFragment : BaseFragment(), HasBackstack {
     @Inject lateinit var settings: Settings
     @Inject lateinit var analyticsTracker: AnalyticsTrackerWrapper
-    private val bookmarksViewModel: BookmarksViewModel by viewModels()
 
     lateinit var upNextBottomSheetBehavior: BottomSheetBehavior<View>
 
     private lateinit var adapter: ViewPagerAdapter
     private val viewModel: PlayerViewModel by activityViewModels()
-    private val chaptersViewModel: ChaptersViewModel by activityViewModels()
     private var binding: FragmentPlayerContainerBinding? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -72,11 +61,12 @@ class PlayerContainerFragment : BaseFragment(), HasBackstack {
     override fun onDestroyView() {
         super.onDestroyView()
         binding = null
-        bookmarksViewModel.multiSelectHelper.context = null
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        adapter = ViewPagerAdapter(childFragmentManager, viewLifecycleOwner.lifecycle)
 
         val upNextFragment = UpNextFragment.newInstance(embedded = true, source = UpNextSource.NOW_PLAYING)
         childFragmentManager.beginTransaction().replace(R.id.upNextFrameBottomSheet, upNextFragment).commitAllowingStateLoss()
@@ -99,7 +89,7 @@ class PlayerContainerFragment : BaseFragment(), HasBackstack {
                         theme.updateWindowStatusBar(it.window, StatusBarColor.Custom(ThemeColor.primaryUi01(Theme.ThemeType.DARK), true), it)
                     }
 
-                    upNextFragment.onExpanded()
+                    upNextFragment.startTour()
 
                     FirebaseAnalyticsTracker.openedUpNext()
                 } else if (newState == BottomSheetBehavior.STATE_COLLAPSED) {
@@ -107,12 +97,17 @@ class PlayerContainerFragment : BaseFragment(), HasBackstack {
                     updateUpNextVisibility(false)
 
                     (activity as? FragmentHostListener)?.updateSystemColors()
-                    upNextFragment.onCollapsed()
                 }
             }
         })
 
         val viewPager = binding.viewPager
+        viewPager.adapter = adapter
+        viewPager.getChildAt(0).isNestedScrollingEnabled = false // HACK to fix bottom sheet drag, https://issuetracker.google.com/issues/135517665
+
+        TabLayoutMediator(binding.tabLayout, viewPager, true) { tab, position ->
+            tab.setText(adapter.pageTitle(position))
+        }.attach()
 
         viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             private var previousPosition: Int = INVALID_TAB_POSITION
@@ -121,26 +116,22 @@ class PlayerContainerFragment : BaseFragment(), HasBackstack {
                 if (state == SCROLL_STATE_IDLE) {
                     (activity as? FragmentHostListener)?.updatePlayerView()
                 }
-                viewPager.isUserInputEnabled = !bookmarksViewModel.multiSelectHelper.isMultiSelecting
             }
 
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
-                when {
-                    adapter.isPlayerTab(position) -> {
+                when (position) {
+                    0 -> {
                         if (previousPosition == INVALID_TAB_POSITION) return
-                        analyticsTracker.track(AnalyticsEvent.PLAYER_TAB_SELECTED, mapOf(TAB_KEY to "now_playing"))
+                        analyticsTracker.track(AnalyticsEvent.PLAYER_TAB_SELECTED, mapOf(TAB_KEY to NOW_PLAYING))
                         FirebaseAnalyticsTracker.nowPlayingOpen()
                     }
-                    adapter.isNotesTab(position) -> {
-                        analyticsTracker.track(AnalyticsEvent.PLAYER_TAB_SELECTED, mapOf(TAB_KEY to "show_notes"))
+                    1 -> {
+                        analyticsTracker.track(AnalyticsEvent.PLAYER_TAB_SELECTED, mapOf(TAB_KEY to SHOW_NOTES))
                         FirebaseAnalyticsTracker.openedPlayerNotes()
                     }
-                    adapter.isBookmarksTab(position) -> {
-                        analyticsTracker.track(AnalyticsEvent.PLAYER_TAB_SELECTED, mapOf(TAB_KEY to "bookmarks"))
-                    }
-                    adapter.isChaptersTab(position) -> {
-                        analyticsTracker.track(AnalyticsEvent.PLAYER_TAB_SELECTED, mapOf(TAB_KEY to "chapters"))
+                    2 -> {
+                        analyticsTracker.track(AnalyticsEvent.PLAYER_TAB_SELECTED, mapOf(TAB_KEY to CHAPTERS))
                         FirebaseAnalyticsTracker.openedPlayerChapters()
                     }
                     else -> {
@@ -152,19 +143,12 @@ class PlayerContainerFragment : BaseFragment(), HasBackstack {
         })
 
         viewModel.listDataLive.observe(viewLifecycleOwner) {
-            val hasChapters = !it.chapters.isEmpty
+            val hasChapters = it.chapters.isNotEmpty()
             val hasNotes = !it.podcastHeader.isUserEpisode
-            if (::adapter.isInitialized) {
-                val updated = adapter.update(hasNotes, hasChapters)
-                if (updated) adapter.notifyDataSetChanged()
-            } else {
-                adapter = ViewPagerAdapter(childFragmentManager, viewLifecycleOwner.lifecycle)
-                adapter.update(hasNotes, hasChapters)
-                viewPager.adapter = adapter
-                viewPager.getChildAt(0).isNestedScrollingEnabled = false // HACK to fix bottom sheet drag, https://issuetracker.google.com/issues/135517665
-                TabLayoutMediator(binding.tabLayout, viewPager, true) { tab, position ->
-                    tab.setText(adapter.pageTitle(position))
-                }.attach()
+
+            val updated = adapter.update(hasNotes, hasChapters)
+            if (updated) {
+                adapter.notifyDataSetChanged()
             }
 
             val upNextCount = it.upNextEpisodes.size
@@ -195,18 +179,6 @@ class PlayerContainerFragment : BaseFragment(), HasBackstack {
                 tourView.startTour(tour, PLAYER_TOUR_NAME)
             }
         }
-
-        bookmarksViewModel.multiSelectHelper.isMultiSelectingLive.observe(viewLifecycleOwner) { isMultiSelecting ->
-            binding.multiSelectToolbar.isVisible = isMultiSelecting
-            binding.multiSelectToolbar.setNavigationIcon(IR.drawable.ic_arrow_back)
-        }
-        bookmarksViewModel.multiSelectHelper.context = context
-        binding.multiSelectToolbar.setup(
-            lifecycleOwner = viewLifecycleOwner,
-            multiSelectHelper = bookmarksViewModel.multiSelectHelper,
-            menuRes = null,
-            fragmentManager = parentFragmentManager,
-        )
     }
 
     fun openUpNext() {
@@ -214,41 +186,8 @@ class PlayerContainerFragment : BaseFragment(), HasBackstack {
         (activity as? FragmentHostListener)?.showBottomSheet(upNextFragment)
     }
 
-    fun onPlayerOpen() {
-        try {
-            if (isAdded) {
-                ((childFragmentManager.fragments.firstOrNull { it is BookmarksFragment }) as? BookmarksFragment)
-                    ?.onPlayerOpen()
-            }
-        } catch (e: IllegalStateException) {
-            Timber.e(e)
-        }
-    }
-
-    fun onPlayerClose() {
-        try {
-            if (isAdded) {
-                ((childFragmentManager.fragments.firstOrNull { it is BookmarksFragment }) as? BookmarksFragment)
-                    ?.onPlayerClose()
-            }
-        } catch (e: IllegalStateException) {
-            Timber.e(e)
-        }
-    }
-
-    fun openPlayer(sourceView: SourceView? = null) {
+    fun openPlayer() {
         val index = adapter.indexOfPlayer
-        if (index == -1) return
-        binding?.viewPager?.currentItem = index
-
-        if (sourceView == SourceView.WHATS_NEW) {
-            ((childFragmentManager.fragments.firstOrNull { it is PlayerHeaderFragment }) as? PlayerHeaderFragment)
-                ?.onMoreClicked(sourceView)
-        }
-    }
-
-    fun openBookmarks() {
-        val index = adapter.indexOfBookmarks
         if (index == -1) return
         binding?.viewPager?.currentItem = index
     }
@@ -259,9 +198,8 @@ class PlayerContainerFragment : BaseFragment(), HasBackstack {
             return
         }
         binding?.viewPager?.currentItem = index
-
-        // tapping on the chapter title on the now playing screen should scroll to that chapter when the fragment is available
-        chaptersViewModel.setScrollToChapter(chapter)
+        // HACK: View pager 2 has no way to get the actual fragments
+        childFragmentManager.fragments.filterIsInstance<ChaptersFragment>().firstOrNull()?.scrollToChapter(chapter)
     }
 
     fun updateUpNextVisibility(show: Boolean) {
@@ -273,23 +211,15 @@ class PlayerContainerFragment : BaseFragment(), HasBackstack {
     }
 
     override fun getBackstackCount(): Int {
-        return if (upNextBottomSheetBehavior.state == BottomSheetBehavior.STATE_EXPANDED ||
-            bookmarksViewModel.multiSelectHelper.isMultiSelecting
-        ) 1 else 0
+        return if (upNextBottomSheetBehavior.state == BottomSheetBehavior.STATE_EXPANDED) 1 else 0
     }
 
     override fun onBackPressed(): Boolean {
-        return when {
-            upNextBottomSheetBehavior.state == BottomSheetBehavior.STATE_EXPANDED -> {
-                upNextBottomSheetBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
-                true
-            }
-            bookmarksViewModel.multiSelectHelper.isMultiSelecting -> {
-                bookmarksViewModel.multiSelectHelper.closeMultiSelect()
-                binding?.viewPager?.isUserInputEnabled = true
-                true
-            }
-            else -> false
+        return if (upNextBottomSheetBehavior.state == BottomSheetBehavior.STATE_EXPANDED) {
+            upNextBottomSheetBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
+            true
+        } else {
+            false
         }
     }
 
@@ -297,6 +227,9 @@ class PlayerContainerFragment : BaseFragment(), HasBackstack {
         private const val INVALID_TAB_POSITION = -1
         private const val SOURCE_KEY = "source"
         private const val TAB_KEY = "tab"
+        private const val NOW_PLAYING = "now_playing"
+        private const val SHOW_NOTES = "show_notes"
+        private const val CHAPTERS = "chapters"
     }
 }
 
@@ -304,20 +237,16 @@ private class ViewPagerAdapter(fragmentManager: FragmentManager, lifecycle: Life
     private sealed class Section(@StringRes val titleRes: Int) {
         object Player : Section(VR.string.player_tab_playing)
         object Notes : Section(LR.string.player_tab_notes)
-        object Bookmarks : Section(LR.string.player_tab_bookmarks)
         object Chapters : Section(LR.string.player_tab_chapters)
     }
 
-    private var sections = listOf(Section.Player, Section.Bookmarks)
+    private var sections = listOf<Section>(Section.Player)
 
     val indexOfPlayer: Int
         get() = sections.indexOf(Section.Player)
 
     val indexOfChapters: Int
         get() = sections.indexOf(Section.Chapters)
-
-    val indexOfBookmarks: Int
-        get() = sections.indexOf(Section.Bookmarks)
 
     fun update(hasNotes: Boolean, hasChapters: Boolean): Boolean {
         val hadNotes = sections.contains(Section.Notes)
@@ -332,10 +261,6 @@ private class ViewPagerAdapter(fragmentManager: FragmentManager, lifecycle: Life
 
         if (hasChapters) {
             newSections.add(Section.Chapters)
-        }
-
-        if (FeatureFlag.isEnabled(Feature.BOOKMARKS_ENABLED)) {
-            newSections.add(Section.Bookmarks)
         }
 
         this.sections = newSections
@@ -360,10 +285,10 @@ private class ViewPagerAdapter(fragmentManager: FragmentManager, lifecycle: Life
     }
 
     override fun createFragment(position: Int): Fragment {
+        Timber.d("Creating fragment for position $position ${sections[position]}")
         return when (sections[position]) {
             is Section.Player -> PlayerHeaderFragment()
             is Section.Notes -> NotesFragment()
-            is Section.Bookmarks -> BookmarksFragment.newInstance(SourceView.PLAYER)
             is Section.Chapters -> ChaptersFragment()
         }
     }
@@ -371,11 +296,6 @@ private class ViewPagerAdapter(fragmentManager: FragmentManager, lifecycle: Life
     @StringRes fun pageTitle(position: Int): Int {
         return sections[position].titleRes
     }
-
-    fun isPlayerTab(position: Int) = sections[position] is Section.Player
-    fun isNotesTab(position: Int) = sections[position] is Section.Notes
-    fun isBookmarksTab(position: Int) = sections[position] is Section.Bookmarks
-    fun isChaptersTab(position: Int) = sections[position] is Section.Chapters
 }
 
 private const val PLAYER_TOUR_NAME = "player"

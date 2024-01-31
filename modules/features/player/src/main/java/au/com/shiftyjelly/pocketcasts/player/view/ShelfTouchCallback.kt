@@ -59,9 +59,7 @@ class ShelfTouchCallback(
         if (viewHolder is ItemTouchHelperViewHolder) {
             viewHolder.onItemClear()
         }
-        if (viewHolder.bindingAdapterPosition != NO_POSITION) {
-            listener.onShelfItemTouchHelperFinished(viewHolder.bindingAdapterPosition)
-        }
+        listener.onShelfItemTouchHelperFinished(viewHolder.bindingAdapterPosition)
     }
 
     override fun isItemViewSwipeEnabled(): Boolean {

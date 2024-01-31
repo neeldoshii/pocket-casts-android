@@ -13,58 +13,46 @@ import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.Observer
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsEvent
+import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsSource
 import au.com.shiftyjelly.pocketcasts.analytics.AnalyticsTrackerWrapper
 import au.com.shiftyjelly.pocketcasts.analytics.FirebaseAnalyticsTracker
-import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.localization.extensions.getStringPlural
 import au.com.shiftyjelly.pocketcasts.models.entity.BaseEpisode
-import au.com.shiftyjelly.pocketcasts.models.entity.Bookmark
 import au.com.shiftyjelly.pocketcasts.models.entity.Podcast
 import au.com.shiftyjelly.pocketcasts.models.entity.PodcastEpisode
 import au.com.shiftyjelly.pocketcasts.models.to.PodcastGrouping
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeStatusEnum
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodeViewSource
 import au.com.shiftyjelly.pocketcasts.models.type.EpisodesSortType
-import au.com.shiftyjelly.pocketcasts.player.view.bookmark.BookmarksSortByDialog
 import au.com.shiftyjelly.pocketcasts.podcasts.BuildConfig
 import au.com.shiftyjelly.pocketcasts.podcasts.R
 import au.com.shiftyjelly.pocketcasts.podcasts.databinding.FragmentPodcastBinding
 import au.com.shiftyjelly.pocketcasts.podcasts.view.components.PlayButton
-import au.com.shiftyjelly.pocketcasts.podcasts.view.episode.EpisodeContainerFragment
+import au.com.shiftyjelly.pocketcasts.podcasts.view.episode.EpisodeFragment
 import au.com.shiftyjelly.pocketcasts.podcasts.view.folders.FolderChooserFragment
 import au.com.shiftyjelly.pocketcasts.podcasts.view.podcasts.PodcastsFragment
-import au.com.shiftyjelly.pocketcasts.podcasts.viewmodel.EpisodeListBookmarkViewModel
 import au.com.shiftyjelly.pocketcasts.podcasts.viewmodel.PodcastRatingsViewModel
 import au.com.shiftyjelly.pocketcasts.podcasts.viewmodel.PodcastViewModel
-import au.com.shiftyjelly.pocketcasts.podcasts.viewmodel.PodcastViewModel.PodcastTab
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
-import au.com.shiftyjelly.pocketcasts.repositories.bookmark.BookmarkManager
 import au.com.shiftyjelly.pocketcasts.repositories.chromecast.CastManager
 import au.com.shiftyjelly.pocketcasts.repositories.download.DownloadManager
-import au.com.shiftyjelly.pocketcasts.repositories.playback.AutomaticUpNextSource
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
 import au.com.shiftyjelly.pocketcasts.repositories.playback.UpNextQueue
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.EpisodeManager
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.PodcastManager
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.SharePodcastHelper
 import au.com.shiftyjelly.pocketcasts.servers.ServerManager
-import au.com.shiftyjelly.pocketcasts.settings.HeadphoneControlsSettingsFragment
-import au.com.shiftyjelly.pocketcasts.settings.SettingsFragment
 import au.com.shiftyjelly.pocketcasts.ui.extensions.getThemeColor
 import au.com.shiftyjelly.pocketcasts.ui.helper.FragmentHostListener
 import au.com.shiftyjelly.pocketcasts.ui.helper.StatusBarColor
 import au.com.shiftyjelly.pocketcasts.ui.images.CoilManager
 import au.com.shiftyjelly.pocketcasts.ui.theme.ThemeColor
 import au.com.shiftyjelly.pocketcasts.utils.extensions.dpToPx
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
-import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 import au.com.shiftyjelly.pocketcasts.utils.log.LogBuffer
 import au.com.shiftyjelly.pocketcasts.views.dialog.ConfirmationDialog
 import au.com.shiftyjelly.pocketcasts.views.dialog.OptionsDialog
@@ -73,24 +61,21 @@ import au.com.shiftyjelly.pocketcasts.views.extensions.smoothScrollToTop
 import au.com.shiftyjelly.pocketcasts.views.extensions.tintIcons
 import au.com.shiftyjelly.pocketcasts.views.fragments.BaseFragment
 import au.com.shiftyjelly.pocketcasts.views.helper.EpisodeItemTouchHelper
-import au.com.shiftyjelly.pocketcasts.views.helper.SwipeButtonLayoutFactory
-import au.com.shiftyjelly.pocketcasts.views.helper.SwipeButtonLayoutViewModel
 import au.com.shiftyjelly.pocketcasts.views.helper.UiUtil
 import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectHelper
-import au.com.shiftyjelly.pocketcasts.views.multiselect.MultiSelectToolbar
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.asObservable
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlin.coroutines.CoroutineContext
 import au.com.shiftyjelly.pocketcasts.images.R as IR
 import au.com.shiftyjelly.pocketcasts.localization.R as LR
 import au.com.shiftyjelly.pocketcasts.ui.R as UR
-import au.com.shiftyjelly.pocketcasts.views.R as VR
 
 @AndroidEntryPoint
-class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
+class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener, CoroutineScope {
 
     companion object {
         const val ARG_PODCAST_UUID = "ARG_PODCAST_UUID"
@@ -104,7 +89,6 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
         private const val REMOVE = "remove"
         private const val CHANGE = "change"
         private const val GO_TO = "go_to"
-        private const val EPISODE_CARD = "episode_card"
 
         fun newInstance(podcastUuid: String, fromListUuid: String? = null, featuredPodcast: Boolean = false): PodcastFragment {
             return PodcastFragment().apply {
@@ -117,6 +101,7 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
         }
     }
 
+    private lateinit var itemTouchHelper: EpisodeItemTouchHelper
     @Inject lateinit var settings: Settings
     @Inject lateinit var podcastManager: PodcastManager
     @Inject lateinit var episodeManager: EpisodeManager
@@ -126,21 +111,21 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
     @Inject lateinit var playButtonListener: PlayButton.OnClickListener
     @Inject lateinit var castManager: CastManager
     @Inject lateinit var upNextQueue: UpNextQueue
-    @Inject lateinit var bookmarkManager: BookmarkManager
+    @Inject lateinit var multiSelectHelper: MultiSelectHelper
     @Inject lateinit var coilManager: CoilManager
     @Inject lateinit var analyticsTracker: AnalyticsTrackerWrapper
 
     private val viewModel: PodcastViewModel by viewModels()
     private val ratingsViewModel: PodcastRatingsViewModel by viewModels()
-    private val episodeListBookmarkViewModel: EpisodeListBookmarkViewModel by viewModels()
-    private val swipeButtonLayoutViewModel: SwipeButtonLayoutViewModel by viewModels()
     private var adapter: PodcastAdapter? = null
     private var binding: FragmentPodcastBinding? = null
-    private var itemTouchHelper: EpisodeItemTouchHelper? = null
 
     private var featuredPodcast = false
     private var fromListUuid: String? = null
     private var listState: Parcelable? = null
+
+    override val coroutineContext: CoroutineContext
+        get() = Dispatchers.Main
 
     private val onScrollListener = object : RecyclerView.OnScrollListener() {
         override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {}
@@ -184,7 +169,7 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
     }
 
     private val onUnsubscribeClicked: (successCallback: () -> Unit) -> Unit = { successCallback ->
-        lifecycleScope.launch {
+        launch {
             val downloaded = withContext(Dispatchers.Default) { podcastManager.countEpisodesInPodcastWithStatus(podcastUuid, EpisodeStatusEnum.DOWNLOADED) }
             val title = when (downloaded) {
                 0 -> getString(LR.string.are_you_sure)
@@ -207,23 +192,8 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
         }
     }
 
-    private fun <T> onRowLongPress(): (entity: T) -> Unit = {
-        when (it) {
-            is PodcastEpisode -> {
-                if (viewModel.multiSelectEpisodesHelper.listener == null) {
-                    binding?.setupMultiSelect()
-                }
-                viewModel.multiSelectEpisodesHelper
-                    .defaultLongPress(multiSelectable = it, fragmentManager = childFragmentManager)
-            }
-            is Bookmark -> {
-                if (viewModel.multiSelectBookmarksHelper.listener == null) {
-                    binding?.setupMultiSelect()
-                }
-                viewModel.multiSelectBookmarksHelper
-                    .defaultLongPress(multiSelectable = it, fragmentManager = childFragmentManager)
-            }
-        }
+    private val onRowLongPress: (episode: PodcastEpisode) -> Unit = { episode ->
+        multiSelectHelper.defaultLongPress(episode = episode, fragmentManager = childFragmentManager)
         adapter?.notifyDataSetChanged()
     }
 
@@ -248,13 +218,13 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
                 mapOf(LIST_ID_KEY to listUuid, PODCAST_UUID_KEY to episode.podcastUuid, EPISODE_UUID_KEY to episode.uuid)
             )
         }
-        val episodeCard = EpisodeContainerFragment.newInstance(
+        val episodeCard = EpisodeFragment.newInstance(
             episode = episode,
             source = EpisodeViewSource.PODCAST_SCREEN,
             overridePodcastLink = true,
             fromListUuid = fromListUuid
         )
-        episodeCard.show(parentFragmentManager, EPISODE_CARD)
+        episodeCard.show(parentFragmentManager, "episode_card")
     }
 
     private val onSearchQueryChanged: (String) -> Unit = { searchQuery ->
@@ -319,19 +289,6 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
             dialog.show(it, "grouping_options")
         }
         Unit // This is dumb kotlin
-    }
-
-    private val showBookmarksOptionsDialog: () -> Unit = {
-        activity?.supportFragmentManager?.let {
-            BookmarksSortByDialog(
-                settings = settings,
-                changeSortOrder = viewModel::changeSortOrder,
-                sourceView = SourceView.PODCAST_SCREEN
-            ).show(
-                context = requireContext(),
-                fragmentManager = it
-            )
-        }
     }
 
     private val onEpisodesOptionsClicked: () -> Unit = {
@@ -431,8 +388,7 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
             )
             dialog.show()
         }
-        viewModel.multiSelectEpisodesHelper.isMultiSelecting = false
-        viewModel.multiSelectBookmarksHelper.isMultiSelecting = false
+        multiSelectHelper.isMultiSelecting = false
     }
 
     private val onNotificationsClicked: () -> Unit = {
@@ -444,8 +400,7 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
     private val onSettingsClicked: () -> Unit = {
         analyticsTracker.track(AnalyticsEvent.PODCAST_SCREEN_SETTINGS_TAPPED)
         (activity as FragmentHostListener).addFragment(PodcastSettingsFragment.newInstance(viewModel.podcastUuid))
-        viewModel.multiSelectEpisodesHelper.isMultiSelecting = false
-        viewModel.multiSelectBookmarksHelper.isMultiSelecting = false
+        multiSelectHelper.isMultiSelecting = false
     }
 
     private val onSearchFocus: () -> Unit = {
@@ -472,27 +427,11 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
         }
     }
 
-    private val onTabClicked: (tab: PodcastTab) -> Unit = { tab ->
-        viewModel.onTabClicked(tab)
-    }
-
-    private val onBookmarkPlayClicked: (bookmark: Bookmark) -> Unit = { bookmark ->
-        viewModel.play(bookmark)
-    }
-
-    private fun onHeadsetSettingsClicked() {
-        val fragmentHostListener = (activity as? FragmentHostListener)
-        fragmentHostListener?.apply {
-            openTab(VR.id.navigation_profile)
-            addFragment(SettingsFragment())
-            addFragment(HeadphoneControlsSettingsFragment())
-        }
-    }
-
     val podcastUuid
         get() = arguments?.getString(ARG_PODCAST_UUID)!!
 
     private var lastSearchTerm: String? = null
+    private var shouldCloseOnReturn = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -509,15 +448,9 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        AutomaticUpNextSource.mostRecentList = podcastUuid
-    }
-
     override fun onPause() {
         super.onPause()
-        viewModel.multiSelectEpisodesHelper.isMultiSelecting = false
-        viewModel.multiSelectBookmarksHelper.isMultiSelecting = false
+        multiSelectHelper.isMultiSelecting = false
     }
 
     override fun onStop() {
@@ -535,10 +468,28 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
     override fun onStart() {
         super.onStart()
 
+        if (shouldCloseOnReturn) {
+            launch(Dispatchers.Main) {
+                // You can't call back during onresume
+                @Suppress("DEPRECATION")
+                (activity as? AppCompatActivity)?.onBackPressed()
+            }
+        }
+
         updateStatusBar()
 
         binding?.episodesRecyclerView?.adapter = adapter
         binding?.episodesRecyclerView?.layoutManager?.onRestoreInstanceState(listState)
+    }
+
+    fun episodeSwipeArchive(episode: BaseEpisode, index: Int) {
+        val binding = binding ?: return
+
+        binding.episodesRecyclerView.findViewHolderForAdapterPosition(index)?.let {
+            itemTouchHelper.clearView(binding.episodesRecyclerView, it)
+        }
+
+        viewModel.episodeSwipeArchive(episode, index)
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -550,6 +501,8 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
         binding.headerColor = headerColor
         statusBarColor = StatusBarColor.Custom(headerColor, true)
         updateStatusBar()
+
+        itemTouchHelper = EpisodeItemTouchHelper(this::episodeSwipedRightItem1, this::episodeSwipedRightItem2, this::episodeSwipeArchive)
 
         loadData()
 
@@ -573,7 +526,7 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
             }
         }
 
-        playButtonListener.source = SourceView.PODCAST_SCREEN
+        playButtonListener.source = AnalyticsSource.PODCAST_SCREEN
         if (adapter == null) {
             adapter = PodcastAdapter(
                 downloadManager = downloadManager,
@@ -586,9 +539,7 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
                 onSubscribeClicked = onSubscribeClicked,
                 onUnsubscribeClicked = onUnsubscribeClicked,
                 onEpisodesOptionsClicked = onEpisodesOptionsClicked,
-                onBookmarksOptionsClicked = showBookmarksOptionsDialog,
-                onEpisodeRowLongPress = onRowLongPress(),
-                onBookmarkRowLongPress = onRowLongPress(),
+                onRowLongPress = onRowLongPress,
                 onFoldersClicked = onFoldersClicked,
                 onNotificationsClicked = onNotificationsClicked,
                 onSettingsClicked = onSettingsClicked,
@@ -597,27 +548,9 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
                 onSearchQueryChanged = onSearchQueryChanged,
                 onSearchFocus = onSearchFocus,
                 onShowArchivedClicked = onShowArchivedClicked,
-                multiSelectEpisodesHelper = viewModel.multiSelectEpisodesHelper,
-                multiSelectBookmarksHelper = viewModel.multiSelectBookmarksHelper,
+                multiSelectHelper = multiSelectHelper,
                 onArtworkLongClicked = onArtworkLongClicked,
-                onTabClicked = onTabClicked,
-                onBookmarkPlayClicked = onBookmarkPlayClicked,
                 ratingsViewModel = ratingsViewModel,
-                swipeButtonLayoutFactory = SwipeButtonLayoutFactory(
-                    swipeButtonLayoutViewModel = swipeButtonLayoutViewModel,
-                    onItemUpdated = ::notifyItemChanged,
-                    defaultUpNextSwipeAction = { settings.upNextSwipe.value },
-                    context = context,
-                    fragmentManager = parentFragmentManager,
-                    swipeSource = EpisodeItemTouchHelper.SwipeSource.PODCAST_DETAILS,
-                ),
-                onHeadsetSettingsClicked = ::onHeadsetSettingsClicked,
-                sourceView = SourceView.PODCAST_SCREEN,
-                podcastBookmarksObservable = bookmarkManager.findPodcastBookmarksFlow(
-                    podcastUuid = podcastUuid,
-                    sortType = settings.podcastBookmarksSortType.flow.value
-                ).asObservable(),
-                fragmentManager = parentFragmentManager,
             )
         }
 
@@ -630,9 +563,7 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
             it.addOnScrollListener(onScrollListener)
         }
 
-        itemTouchHelper = EpisodeItemTouchHelper().apply {
-            attachToRecyclerView(binding.episodesRecyclerView)
-        }
+        itemTouchHelper.attachToRecyclerView(binding.episodesRecyclerView)
 
         binding.btnRetry.setOnClickListener {
             loadData()
@@ -642,99 +573,60 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
 
         binding.episodesRecyclerView.requestFocus()
 
-        return binding.root
-    }
+        multiSelectHelper.isMultiSelectingLive.observe(viewLifecycleOwner) {
+            binding.multiSelectToolbar.isVisible = it
+            binding.toolbar.isVisible = !it
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        binding?.setupMultiSelect()
-
-        if (FeatureFlag.isEnabled(Feature.BOOKMARKS_ENABLED)) {
-            viewLifecycleOwner.lifecycleScope.launch {
-                viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    viewModel.multiSelectBookmarksHelper.showEditBookmarkPage
-                        .collect { show ->
-                            if (show) onEditBookmarkClick()
-                        }
-                }
-            }
-        }
-    }
-
-    private fun onEditBookmarkClick() {
-        viewModel.buildBookmarkArguments { arguments ->
-            startActivity(arguments.getIntent(requireContext()))
-        }
-    }
-
-    private fun FragmentPodcastBinding.setupMultiSelect() {
-        viewModel.multiSelectEpisodesHelper.setUp(multiSelectEpisodesToolbar)
-        if (FeatureFlag.isEnabled(Feature.BOOKMARKS_ENABLED)) {
-            viewModel.multiSelectBookmarksHelper.setUp(multiSelectBookmarksToolbar)
-        }
-    }
-
-    fun <T> MultiSelectHelper<T>.setUp(multiSelectToolbar: MultiSelectToolbar) {
-        multiSelectToolbar.setup(
-            lifecycleOwner = viewLifecycleOwner,
-            multiSelectHelper = this,
-            menuRes = null,
-            fragmentManager = parentFragmentManager,
-        )
-        isMultiSelectingLive.observe(viewLifecycleOwner) {
-            val episodeContainerFragment = parentFragmentManager.findFragmentByTag(EPISODE_CARD)
-            if (episodeContainerFragment != null) return@observe
-            multiSelectToolbar.isVisible = it
-            binding?.toolbar?.isVisible = !it
             adapter?.notifyDataSetChanged()
         }
-        coordinatorLayout = (activity as FragmentHostListener).snackBarView()
-        source = SourceView.PODCAST_SCREEN
-        listener = object : MultiSelectHelper.Listener<T> {
+        multiSelectHelper.coordinatorLayout = (activity as FragmentHostListener).snackBarView()
+        multiSelectHelper.listener = object : MultiSelectHelper.Listener {
             override fun multiSelectSelectNone() {
-                viewModel.multiSelectSelectNone()
-                this@setUp.closeMultiSelect()
-                adapter?.notifyDataSetChanged()
+                val episodeState = viewModel.episodes.value
+                if (episodeState is PodcastViewModel.EpisodeState.Loaded) {
+                    episodeState.episodes.forEach { multiSelectHelper.deselect(it) }
+                    adapter?.notifyDataSetChanged()
+                }
             }
 
-            override fun multiSelectSelectAllUp(multiSelectable: T) {
-                viewModel.multiSelectAllUp(multiSelectable)
-                adapter?.notifyDataSetChanged()
+            override fun multiSelectSelectAllUp(episode: BaseEpisode) {
+                val grouped = viewModel.groupedEpisodes.value
+                if (grouped != null) {
+                    val group = grouped.find { it.contains(episode) } ?: return
+                    val startIndex = group.indexOf(episode)
+                    if (startIndex > -1) {
+                        multiSelectHelper.selectAllInList(group.subList(0, startIndex + 1))
+                    }
+
+                    adapter?.notifyDataSetChanged()
+                }
             }
 
-            override fun multiSelectSelectAllDown(multiSelectable: T) {
-                viewModel.multiSelectSelectAllDown(multiSelectable)
-                adapter?.notifyDataSetChanged()
+            override fun multiSelectSelectAllDown(episode: BaseEpisode) {
+                val grouped = viewModel.groupedEpisodes.value
+                if (grouped != null) {
+                    val group = grouped.find { it.contains(episode) } ?: return
+                    val startIndex = group.indexOf(episode)
+                    if (startIndex > -1) {
+                        multiSelectHelper.selectAllInList(group.subList(startIndex, group.size))
+                    }
+
+                    adapter?.notifyDataSetChanged()
+                }
             }
 
             override fun multiSelectSelectAll() {
-                viewModel.multiSelectSelectAll()
-                adapter?.notifyDataSetChanged()
-            }
-
-            override fun multiDeselectAllBelow(multiSelectable: T) {
-                viewModel.multiDeselectAllBelow(multiSelectable)
-                adapter?.notifyDataSetChanged()
-            }
-
-            override fun multiDeselectAllAbove(multiSelectable: T) {
-                viewModel.multiDeselectAllAbove(multiSelectable)
-                adapter?.notifyDataSetChanged()
+                val episodeState = viewModel.episodes.value
+                if (episodeState is PodcastViewModel.EpisodeState.Loaded) {
+                    multiSelectHelper.selectAllInList(episodeState.episodes)
+                    adapter?.notifyDataSetChanged()
+                }
             }
         }
-    }
+        multiSelectHelper.source = AnalyticsSource.PODCAST_SCREEN
+        binding.multiSelectToolbar.setup(viewLifecycleOwner, multiSelectHelper, menuRes = null, fragmentManager = parentFragmentManager)
 
-    private fun notifyItemChanged(
-        @Suppress("UNUSED_PARAMETER") episode: BaseEpisode,
-        index: Int,
-    ) {
-        binding?.episodesRecyclerView?.let { recyclerView ->
-            recyclerView.findViewHolderForAdapterPosition(index)?.let {
-                itemTouchHelper?.clearView(recyclerView, it)
-            }
-        }
-
-        adapter?.notifyItemChanged(index)
+        return binding.root
     }
 
     private fun loadData() {
@@ -742,16 +634,7 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
         viewModel.loadPodcast(podcastUuid, resources)
 
         viewModel.signInState.observe(viewLifecycleOwner) { signInState ->
-            adapter?.setSignInState(signInState)
-        }
-
-        viewLifecycleOwner.lifecycleScope.launch {
-            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                episodeListBookmarkViewModel.stateFlow.collect {
-                    adapter?.setBookmarksAvailable(it.isBookmarkFeatureAvailable)
-                    adapter?.notifyDataSetChanged()
-                }
-            }
+            adapter?.setSignedInAsPlus(signInState.isSignedInAsPlus)
         }
 
         viewModel.podcast.observe(
@@ -780,50 +663,41 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
             adapter?.setTint(tintColor)
         }
 
-        viewModel.uiState.observe(viewLifecycleOwner) { state ->
-            when (state) {
-                is PodcastViewModel.UiState.Loading -> Unit
-                is PodcastViewModel.UiState.Loaded -> {
-                    addPaddingForEpisodeSearch(state.episodes)
-                    when (state.showTab) {
-                        PodcastTab.EPISODES -> {
-                            adapter?.setEpisodes(
-                                episodes = state.episodes,
-                                showingArchived = state.showingArchived,
-                                episodeCount = state.episodeCount,
-                                archivedCount = state.archivedCount,
-                                searchTerm = state.searchTerm,
-                                episodeLimit = state.episodeLimit,
-                                episodeLimitIndex = state.episodeLimitIndex,
-                                podcast = state.podcast,
-                                context = requireContext()
-                            )
+        viewModel.episodes.observe(
+            viewLifecycleOwner,
+            Observer { state ->
+                when (state) {
+                    is PodcastViewModel.EpisodeState.Loaded -> {
+                        addPaddingForEpisodeSearch(state.episodes)
+                        val contextRequired = context ?: return@Observer
+                        adapter?.setEpisodes(
+                            episodes = state.episodes,
+                            showingArchived = state.showingArchived,
+                            episodeCount = state.episodeCount,
+                            archivedCount = state.archivedCount,
+                            searchTerm = state.searchTerm,
+                            episodeLimit = state.episodeLimit,
+                            episodeLimitIndex = state.episodeLimitIndex,
+                            grouping = state.grouping,
+                            episodesSortType = state.episodesSortType,
+                            context = contextRequired
+                        )
+                        if (state.searchTerm.isNotEmpty() && state.searchTerm != lastSearchTerm) {
+                            binding?.episodesRecyclerView?.smoothScrollToTop(1)
                         }
-                        PodcastTab.BOOKMARKS -> {
-                            adapter?.setBookmarks(
-                                bookmarks = state.bookmarks,
-                                searchTerm = state.searchBookmarkTerm,
-                                context = requireContext()
-                            )
+                        lastSearchTerm = state.searchTerm
+                    }
+                    is PodcastViewModel.EpisodeState.Error -> {
+                        adapter?.setError()
+                        binding?.error = getString(LR.string.podcast_load_error)
 
-                            adapter?.notifyDataSetChanged()
+                        if (BuildConfig.DEBUG) {
+                            UiUtil.displayAlertError(requireContext(), state.errorMessage, null)
                         }
-                    }
-                    if (state.searchTerm.isNotEmpty() && state.searchTerm != lastSearchTerm) {
-                        binding?.episodesRecyclerView?.smoothScrollToTop(1)
-                    }
-                    lastSearchTerm = state.searchTerm
-                }
-                is PodcastViewModel.UiState.Error -> {
-                    adapter?.setError()
-                    binding?.error = getString(LR.string.podcast_load_error)
-
-                    if (BuildConfig.DEBUG) {
-                        UiUtil.displayAlertError(requireContext(), state.errorMessage, null)
                     }
                 }
             }
-        }
+        )
 
         viewModel.castConnected.observe(viewLifecycleOwner) { castConnected ->
             adapter?.castConnected = castConnected
@@ -854,18 +728,40 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
 
     override fun onDestroyView() {
         binding?.episodesRecyclerView?.adapter = null
-        itemTouchHelper = null
-
-        viewModel.multiSelectEpisodesHelper.cleanup()
-        if (FeatureFlag.isEnabled(Feature.BOOKMARKS_ENABLED)) {
-            viewModel.multiSelectBookmarksHelper.cleanup()
-        }
-
         super.onDestroyView()
 
         binding?.episodesRecyclerView?.removeOnScrollListener(onScrollListener)
         binding?.episodesRecyclerView?.adapter = null
         binding = null
+    }
+
+    private fun episodeSwipedRightItem1(episode: BaseEpisode, index: Int) {
+        when (settings.getUpNextSwipeAction()) {
+            Settings.UpNextAction.PLAY_NEXT -> viewModel.episodeSwipeUpNext(episode)
+            Settings.UpNextAction.PLAY_LAST -> viewModel.episodeSwipeUpLast(episode)
+        }
+
+        binding?.episodesRecyclerView?.let { recyclerView ->
+            recyclerView.findViewHolderForAdapterPosition(index)?.let {
+                itemTouchHelper.clearView(recyclerView, it)
+            }
+        }
+
+        adapter?.notifyItemChanged(index)
+    }
+
+    private fun episodeSwipedRightItem2(episode: BaseEpisode, index: Int) {
+        when (settings.getUpNextSwipeAction()) {
+            Settings.UpNextAction.PLAY_NEXT -> viewModel.episodeSwipeUpLast(episode)
+            Settings.UpNextAction.PLAY_LAST -> viewModel.episodeSwipeUpNext(episode)
+        }
+
+        binding?.episodesRecyclerView?.let { recyclerView ->
+            recyclerView.findViewHolderForAdapterPosition(index)?.let {
+                itemTouchHelper.clearView(recyclerView, it)
+            }
+        }
+        adapter?.notifyItemChanged(index)
     }
 
     private fun archiveAllPlayed() {
@@ -898,7 +794,7 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
                 null,
                 context,
                 SharePodcastHelper.ShareType.PODCAST,
-                SourceView.PODCAST_SCREEN,
+                AnalyticsSource.PODCAST_SCREEN,
                 analyticsTracker
             ).showShareDialogDirect()
         }
@@ -912,20 +808,16 @@ class PodcastFragment : BaseFragment(), Toolbar.OnMenuItemClickListener {
         dialog?.show(parentFragmentManager, "download_confirm")
     }
 
-    override fun onBackPressed() = if (viewModel.multiSelectEpisodesHelper.isMultiSelecting) {
-        viewModel.multiSelectEpisodesHelper.isMultiSelecting = false
-        true
-    } else if (viewModel.multiSelectBookmarksHelper.isMultiSelecting) {
-        viewModel.multiSelectBookmarksHelper.isMultiSelecting = false
-        true
-    } else {
-        super.onBackPressed()
+    override fun onBackPressed(): Boolean {
+        return if (multiSelectHelper.isMultiSelecting) {
+            multiSelectHelper.isMultiSelecting = false
+            true
+        } else {
+            super.onBackPressed()
+        }
     }
 
-    override fun getBackstackCount() = super.getBackstackCount() +
-        if (viewModel.multiSelectEpisodesHelper.isMultiSelecting || viewModel.multiSelectBookmarksHelper.isMultiSelecting) {
-            1
-        } else {
-            0
-        }
+    override fun getBackstackCount(): Int {
+        return super.getBackstackCount() + if (multiSelectHelper.isMultiSelecting) 1 else 0
+    }
 }
